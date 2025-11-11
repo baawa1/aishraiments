@@ -31,6 +31,8 @@ import {
 import { AlertCircle, Wallet, DollarSign } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PaymentMethod } from "@/types/database";
+import { toast } from "sonner";
+import { TableSkeleton } from "@/components/table-skeleton";
 
 interface Receivable {
   customer_id: string | null;
@@ -180,7 +182,7 @@ export default function ReceivablesPage() {
 
     if (collectionError) {
       console.error("Error logging collection:", collectionError);
-      alert("Error logging collection");
+      toast.error("Error logging collection");
       return;
     }
 
@@ -214,6 +216,7 @@ export default function ReceivablesPage() {
     await fetchReceivables();
     setCollectDialogOpen(false);
     setSelectedCustomer(null);
+    toast.success("Payment recorded successfully");
   };
 
   const filteredReceivables = receivables.filter((receivable) =>
@@ -296,11 +299,7 @@ export default function ReceivablesPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={6} rows={5} />
             ) : filteredReceivables.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center">

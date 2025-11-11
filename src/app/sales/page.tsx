@@ -31,7 +31,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Receipt, TrendingUp, Plus, Pencil, Trash2 } from "lucide-react";
+import { Receipt, TrendingUp, Plus, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { toast } from "sonner";
+import { TableSkeleton } from "@/components/table-skeleton";
+
+type SortField = "date" | "customer_name" | "total_amount" | "amount_paid" | "balance";
+type SortDirection = "asc" | "desc";
 
 const saleTypes: SaleType[] = ["Sewing", "Fabric", "Other"];
 
@@ -43,6 +48,10 @@ export default function SalesPage() {
   const [editingSale, setEditingSale] = useState<SalesSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -58,10 +67,21 @@ export default function SalesPage() {
 
   const fetchSales = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+
+    let query = supabase
       .from("sales_summary")
       .select("*")
       .order("date", { ascending: false });
+
+    // Apply date range filters if provided
+    if (startDate) {
+      query = query.gte("date", startDate);
+    }
+    if (endDate) {
+      query = query.lte("date", endDate);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching sales:", error);
@@ -69,7 +89,7 @@ export default function SalesPage() {
       setSales(data || []);
     }
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, startDate, endDate]);
 
   const fetchCustomers = useCallback(async () => {
     const { data } = await supabase
@@ -130,22 +150,24 @@ export default function SalesPage() {
 
       if (error) {
         console.error("Error updating sale:", error);
-        alert("Error updating sale");
+        toast.error("Error updating sale");
       } else {
         await fetchSales();
         setDialogOpen(false);
         resetForm();
+        toast.success("Sale updated successfully");
       }
     } else {
       const { error } = await supabase.from("sales_summary").insert([data]);
 
       if (error) {
         console.error("Error adding sale:", error);
-        alert("Error adding sale");
+        toast.error("Error adding sale");
       } else {
         await fetchSales();
         setDialogOpen(false);
         resetForm();
+        toast.success("Sale added successfully");
       }
     }
   };
@@ -171,21 +193,65 @@ export default function SalesPage() {
 
     if (error) {
       console.error("Error deleting sale:", error);
-      alert("Error deleting sale");
+      toast.error("Error deleting sale");
     } else {
       await fetchSales();
+      toast.success("Sale deleted successfully");
     }
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-2 h-4 w-4 inline" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="ml-2 h-4 w-4 inline" />
+    ) : (
+      <ArrowDown className="ml-2 h-4 w-4 inline" />
+    );
   };
 
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total_amount), 0);
   const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.amount_paid), 0);
   const totalOutstanding = sales.reduce((sum, sale) => sum + Number(sale.balance), 0);
 
-  const filteredSales = sales.filter((sale) => {
-    const matchesSearch = sale.customer_name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = typeFilter === "all" || sale.sale_type === typeFilter;
-    return matchesSearch && matchesType;
-  });
+  const filteredSales = sales
+    .filter((sale) => {
+      const matchesSearch = sale.customer_name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesType = typeFilter === "all" || sale.sale_type === typeFilter;
+      return matchesSearch && matchesType;
+    })
+    .sort((a, b) => {
+      let aValue: any = a[sortField];
+      let bValue: any = b[sortField];
+      if (aValue == null) aValue = "";
+      if (bValue == null) bValue = "";
+
+      // Convert to numbers for numeric fields
+      if (["total_amount", "amount_paid", "balance"].includes(sortField)) {
+        aValue = Number(aValue);
+        bValue = Number(bValue);
+      }
+
+      // Handle dates
+      if (sortField === "date") {
+        aValue = new Date(aValue).getTime();
+        bValue = new Date(bValue).getTime();
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
 
   return (
     <div className="flex-1 space-y-6 p-8">
@@ -397,13 +463,37 @@ export default function SalesPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <Input
           placeholder="Search by customer name..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
+        <div className="flex items-center gap-2">
+          <Label htmlFor="startDate" className="text-sm whitespace-nowrap">
+            From:
+          </Label>
+          <Input
+            id="startDate"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-[150px]"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="endDate" className="text-sm whitespace-nowrap">
+            To:
+          </Label>
+          <Input
+            id="endDate"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-[150px]"
+          />
+        </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="All Types" />
@@ -421,23 +511,29 @@ export default function SalesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("date")}>
+                Date{getSortIcon("date")}
+              </TableHead>
               <TableHead>Type</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead className="text-right">Total Amount</TableHead>
-              <TableHead className="text-right">Amount Paid</TableHead>
-              <TableHead className="text-right">Balance</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("customer_name")}>
+                Customer{getSortIcon("customer_name")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_amount")}>
+                Total Amount{getSortIcon("total_amount")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("amount_paid")}>
+                Amount Paid{getSortIcon("amount_paid")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("balance")}>
+                Balance{getSortIcon("balance")}
+              </TableHead>
               <TableHead>Notes</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={8} rows={5} />
             ) : filteredSales.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center">

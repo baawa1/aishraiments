@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import { InventoryItem, FabricCategory } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,8 +31,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, AlertCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { TableSkeleton } from "@/components/table-skeleton";
+
+type SortField = "item_name" | "category" | "quantity_left" | "unit_cost" | "total_cost" | "date";
+type SortDirection = "asc" | "desc";
 
 const categories: FabricCategory[] = [
   "Fabric",
@@ -47,6 +52,8 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -124,22 +131,24 @@ export default function InventoryPage() {
 
       if (error) {
         console.error("Error updating item:", error);
-        alert("Error updating item");
+        toast.error("Error updating item");
       } else {
         await fetchItems();
         setDialogOpen(false);
         resetForm();
+        toast.success("Item updated successfully");
       }
     } else {
       const { error } = await supabase.from("inventory").insert([data]);
 
       if (error) {
         console.error("Error adding item:", error);
-        alert("Error adding item");
+        toast.error("Error adding item");
       } else {
         await fetchItems();
         setDialogOpen(false);
         resetForm();
+        toast.success("Item added successfully");
       }
     }
   };
@@ -168,20 +177,61 @@ export default function InventoryPage() {
 
     if (error) {
       console.error("Error deleting item:", error);
-      alert("Error deleting item");
+      toast.error("Error deleting item");
     } else {
       await fetchItems();
+      toast.success("Item deleted successfully");
     }
   };
 
-  const filteredItems = items.filter((item) => {
-    const matchesSearch = item.item_name
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesCategory =
-      selectedCategory === "all" || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-2 h-4 w-4 inline" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="ml-2 h-4 w-4 inline" />
+    ) : (
+      <ArrowDown className="ml-2 h-4 w-4 inline" />
+    );
+  };
+
+  const filteredItems = items
+    .filter((item) => {
+      const matchesSearch = item.item_name
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesCategory =
+        selectedCategory === "all" || item.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      let aValue: any = a[sortField];
+      let bValue: any = b[sortField];
+
+      // Handle null/undefined values
+      if (aValue == null) aValue = "";
+      if (bValue == null) bValue = "";
+
+      // Convert to numbers for numeric fields
+      if (["quantity_left", "unit_cost", "total_cost"].includes(sortField)) {
+        aValue = Number(aValue);
+        bValue = Number(bValue);
+      }
+
+      // Compare
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
 
   const totalInventoryValue = items.reduce(
     (sum, item) => sum + Number(item.total_cost),
@@ -417,24 +467,30 @@ export default function InventoryPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Item Name</TableHead>
-              <TableHead>Category</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("item_name")}>
+                Item Name{getSortIcon("item_name")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("category")}>
+                Category{getSortIcon("category")}
+              </TableHead>
               <TableHead className="text-right">Bought</TableHead>
               <TableHead className="text-right">Used</TableHead>
-              <TableHead className="text-right">Left</TableHead>
-              <TableHead className="text-right">Unit Cost</TableHead>
-              <TableHead className="text-right">Total Cost</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("quantity_left")}>
+                Left{getSortIcon("quantity_left")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("unit_cost")}>
+                Unit Cost{getSortIcon("unit_cost")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_cost")}>
+                Total Cost{getSortIcon("total_cost")}
+              </TableHead>
               <TableHead>Location</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={9} rows={5} />
             ) : filteredItems.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center">

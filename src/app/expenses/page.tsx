@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, RefreshCcw } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { toast } from "sonner";
+import { TableSkeleton } from "@/components/table-skeleton";
 
 const expenseTypes: ExpenseType[] = [
   "Embroidery",
@@ -52,6 +54,8 @@ export default function ExpensesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [showFixedOnly, setShowFixedOnly] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -68,10 +72,21 @@ export default function ExpensesPage() {
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+
+    let query = supabase
       .from("expenses")
       .select("*")
       .order("date", { ascending: false });
+
+    // Apply date range filters if provided
+    if (startDate) {
+      query = query.gte("date", startDate);
+    }
+    if (endDate) {
+      query = query.lte("date", endDate);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching expenses:", error);
@@ -79,7 +94,7 @@ export default function ExpensesPage() {
       setExpenses(data || []);
     }
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, startDate, endDate]);
 
   const fetchJobs = useCallback(async () => {
     const { data } = await supabase
@@ -131,22 +146,24 @@ export default function ExpensesPage() {
 
       if (error) {
         console.error("Error updating expense:", error);
-        alert("Error updating expense");
+        toast.error("Error updating expense");
       } else {
         await fetchExpenses();
         setDialogOpen(false);
         resetForm();
+        toast.success("Expense updated successfully");
       }
     } else {
       const { error } = await supabase.from("expenses").insert([data]);
 
       if (error) {
         console.error("Error adding expense:", error);
-        alert("Error adding expense");
+        toast.error("Error adding expense");
       } else {
         await fetchExpenses();
         setDialogOpen(false);
         resetForm();
+        toast.success("Expense added successfully");
       }
     }
   };
@@ -173,9 +190,10 @@ export default function ExpensesPage() {
 
     if (error) {
       console.error("Error deleting expense:", error);
-      alert("Error deleting expense");
+      toast.error("Error deleting expense");
     } else {
       await fetchExpenses();
+      toast.success("Expense deleted successfully");
     }
   };
 
@@ -385,6 +403,30 @@ export default function ExpensesPage() {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
+        <div className="flex items-center gap-2">
+          <Label htmlFor="startDate" className="text-sm whitespace-nowrap">
+            From:
+          </Label>
+          <Input
+            id="startDate"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-[150px]"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="endDate" className="text-sm whitespace-nowrap">
+            To:
+          </Label>
+          <Input
+            id="endDate"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-[150px]"
+          />
+        </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="All Types" />
@@ -444,11 +486,7 @@ export default function ExpensesPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={7} rows={5} />
             ) : filteredExpenses.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center">

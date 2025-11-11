@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useSettings } from "@/contexts/SettingsContext";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Settings as SettingsIcon } from "lucide-react";
 
 export default function SettingsPage() {
+  const { settings: contextSettings, refreshSettings } = useSettings();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -60,8 +63,11 @@ export default function SettingsPage() {
       }
     }
 
+    // Refresh settings in context to apply changes globally
+    await refreshSettings();
+
     setSaving(false);
-    alert("Settings saved successfully! Refresh the page to see changes.");
+    toast.success("Settings saved successfully! Changes applied throughout the app.");
   };
 
   return (
@@ -208,8 +214,8 @@ export default function SettingsPage() {
           <Button
             onClick={handleSave}
             disabled={saving || loading}
-            style={{ backgroundColor: "#72D0CF" }}
-            className="w-full sm:w-auto"
+            style={{ backgroundColor: contextSettings.brand_primary_color }}
+            className="w-full sm:w-auto text-white"
           >
             {saving ? "Saving..." : "Save Settings"}
           </Button>

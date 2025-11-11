@@ -30,8 +30,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertCircle, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { toast } from "sonner";
+import { TableSkeleton } from "@/components/table-skeleton";
+
+type SortField = "date" | "customer_name" | "total_charged" | "amount_paid" | "balance" | "profit" | "status";
+type SortDirection = "asc" | "desc";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<SewingJob[]>([]);
@@ -42,6 +47,8 @@ export default function JobsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [fabricSourceFilter, setFabricSourceFilter] = useState("all");
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -176,7 +183,7 @@ export default function JobsPage() {
 
       if (error) {
         console.error("Error updating job:", error);
-        alert("Error updating job");
+        toast.error("Error updating job");
       } else {
         // If status changed to "Done", create/update sale record
         if (autoStatus === "Done" && (!editingJob || editingJob.status !== "Done")) {
@@ -222,6 +229,7 @@ export default function JobsPage() {
         await fetchJobs();
         setDialogOpen(false);
         resetForm();
+        toast.success("Job updated successfully");
       }
     } else {
       const { error, data: newJob } = await supabase
@@ -232,7 +240,7 @@ export default function JobsPage() {
 
       if (error) {
         console.error("Error adding job:", error);
-        alert("Error adding job");
+        toast.error("Error adding job");
       } else {
         // If job is created with "Done" status, create sale record
         if (autoStatus === "Done" && newJob) {
@@ -273,6 +281,7 @@ export default function JobsPage() {
         await fetchJobs();
         setDialogOpen(false);
         resetForm();
+        toast.success("Job added successfully");
       }
     }
   };
@@ -305,21 +314,59 @@ export default function JobsPage() {
 
     if (error) {
       console.error("Error deleting job:", error);
-      alert("Error deleting job");
+      toast.error("Error deleting job");
     } else {
       await fetchJobs();
+      toast.success("Job deleted successfully");
     }
   };
 
-  const filteredJobs = jobs.filter((job) => {
-    const matchesSearch =
-      job.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.item_sewn.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || job.status === statusFilter;
-    const matchesFabricSource =
-      fabricSourceFilter === "all" || job.fabric_source === fabricSourceFilter;
-    return matchesSearch && matchesStatus && matchesFabricSource;
-  });
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-2 h-4 w-4 inline" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="ml-2 h-4 w-4 inline" />
+    ) : (
+      <ArrowDown className="ml-2 h-4 w-4 inline" />
+    );
+  };
+
+  const filteredJobs = jobs
+    .filter((job) => {
+      const matchesSearch =
+        job.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.item_sewn.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || job.status === statusFilter;
+      const matchesFabricSource =
+        fabricSourceFilter === "all" || job.fabric_source === fabricSourceFilter;
+      return matchesSearch && matchesStatus && matchesFabricSource;
+    })
+    .sort((a, b) => {
+      let aValue: any = a[sortField];
+      let bValue: any = b[sortField];
+      if (aValue == null) aValue = "";
+      if (bValue == null) bValue = "";
+
+      // Convert to numbers for numeric fields
+      if (["total_charged", "amount_paid", "balance", "profit"].includes(sortField)) {
+        aValue = Number(aValue);
+        bValue = Number(bValue);
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
 
   const isOverdue = (job: SewingJob) => {
     if (!job.delivery_date_expected || job.status === "Done") return false;
@@ -661,25 +708,35 @@ export default function JobsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("date")}>
+                Date{getSortIcon("date")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("customer_name")}>
+                Customer{getSortIcon("customer_name")}
+              </TableHead>
               <TableHead>Item</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Paid</TableHead>
-              <TableHead className="text-right">Balance</TableHead>
-              <TableHead className="text-right">Profit</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_charged")}>
+                Total{getSortIcon("total_charged")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("amount_paid")}>
+                Paid{getSortIcon("amount_paid")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("balance")}>
+                Balance{getSortIcon("balance")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("profit")}>
+                Profit{getSortIcon("profit")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("status")}>
+                Status{getSortIcon("status")}
+              </TableHead>
               <TableHead>Delivery</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={10} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={10} rows={5} />
             ) : filteredJobs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} className="text-center">

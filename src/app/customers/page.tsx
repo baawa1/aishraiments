@@ -2,10 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useSettings } from "@/contexts/SettingsContext";
+import { toast } from "sonner";
 import { Customer } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -30,8 +33,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, User, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, User, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { TableSkeleton } from "@/components/table-skeleton";
+
+type SortField = "name" | "last_order_date" | "total_orders" | "lifetime_value" | "outstanding_balance";
+type SortDirection = "asc" | "desc";
 
 interface CustomerWithStats extends Customer {
   total_orders?: number;
@@ -40,11 +47,14 @@ interface CustomerWithStats extends Customer {
 }
 
 export default function CustomersPage() {
+  const { settings } = useSettings();
   const [customers, setCustomers] = useState<CustomerWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -155,7 +165,7 @@ export default function CustomersPage() {
 
       if (error) {
         console.error("Error updating customer:", error);
-        alert("Error updating customer");
+        toast.error("Error updating customer");
       } else {
         await fetchCustomers();
         setDialogOpen(false);
@@ -166,7 +176,7 @@ export default function CustomersPage() {
 
       if (error) {
         console.error("Error adding customer:", error);
-        alert("Error adding customer");
+        toast.error("Error adding customer");
       } else {
         await fetchCustomers();
         setDialogOpen(false);
@@ -196,16 +206,59 @@ export default function CustomersPage() {
 
     if (error) {
       console.error("Error deleting customer:", error);
-      alert("Error deleting customer");
+      toast.error("Error deleting customer");
     } else {
       await fetchCustomers();
     }
   };
 
-  const filteredCustomers = customers.filter((customer) =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (customer.phone && customer.phone.includes(searchTerm))
-  );
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-2 h-4 w-4 inline" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="ml-2 h-4 w-4 inline" />
+    ) : (
+      <ArrowDown className="ml-2 h-4 w-4 inline" />
+    );
+  };
+
+  const filteredCustomers = customers
+    .filter((customer) =>
+      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.phone && customer.phone.includes(searchTerm))
+    )
+    .sort((a, b) => {
+      let aValue: any = a[sortField];
+      let bValue: any = b[sortField];
+      if (aValue == null) aValue = "";
+      if (bValue == null) bValue = "";
+
+      // Convert to numbers for numeric fields
+      if (["total_orders", "lifetime_value", "outstanding_balance"].includes(sortField)) {
+        aValue = Number(aValue);
+        bValue = Number(bValue);
+      }
+
+      // Handle dates
+      if (sortField === "last_order_date") {
+        aValue = aValue ? new Date(aValue).getTime() : 0;
+        bValue = bValue ? new Date(bValue).getTime() : 0;
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
 
   // Check if customer is inactive (no order in 60+ days)
   const isInactive = (customer: Customer) => {
@@ -233,7 +286,8 @@ export default function CustomersPage() {
                 resetForm();
                 setDialogOpen(true);
               }}
-              style={{ backgroundColor: "#72D0CF" }}
+              style={{ backgroundColor: settings.brand_primary_color }}
+              className="text-white"
             >
               <Plus className="mr-2 h-4 w-4" />
               Add Customer
@@ -387,23 +441,29 @@ export default function CustomersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Customer</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("name")}>
+                Customer{getSortIcon("name")}
+              </TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Contact Method</TableHead>
-              <TableHead>Last Order</TableHead>
-              <TableHead className="text-right">Total Orders</TableHead>
-              <TableHead className="text-right">Lifetime Value</TableHead>
-              <TableHead className="text-right">Outstanding</TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("last_order_date")}>
+                Last Order{getSortIcon("last_order_date")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_orders")}>
+                Total Orders{getSortIcon("total_orders")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("lifetime_value")}>
+                Lifetime Value{getSortIcon("lifetime_value")}
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("outstanding_balance")}>
+                Outstanding{getSortIcon("outstanding_balance")}
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={8} rows={5} />
             ) : filteredCustomers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center">
@@ -424,7 +484,13 @@ export default function CustomersPage() {
                           </span>
                         )}
                         <div>
-                          <div className="font-medium">{customer.name}</div>
+                          <Link
+                            href={`/customers/${customer.id}`}
+                            className="font-medium hover:underline"
+                            style={{ color: settings.brand_primary_color }}
+                          >
+                            {customer.name}
+                          </Link>
                           {customer.address && (
                             <div className="text-xs text-muted-foreground">
                               {customer.address}
@@ -449,7 +515,7 @@ export default function CustomersPage() {
                     <TableCell className="text-right">
                       {customer.total_orders || 0}
                     </TableCell>
-                    <TableCell className="text-right font-medium" style={{ color: "#72D0CF" }}>
+                    <TableCell className="text-right font-medium" style={{ color: settings.brand_primary_color }}>
                       ₦{(customer.lifetime_value || 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">

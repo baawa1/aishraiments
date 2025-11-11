@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Wallet, TrendingUp, Calendar } from "lucide-react";
+import { TableSkeleton } from "@/components/table-skeleton";
 
 const paymentMethods: PaymentMethod[] = ["Transfer", "Cash", "POS", "Other"];
 
@@ -202,11 +203,7 @@ export default function CollectionsPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={5} rows={5} />
             ) : filteredCollections.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center">

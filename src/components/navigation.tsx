@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useSettings } from "@/contexts/SettingsContext";
 import { Button } from "./ui/button";
 import {
   LayoutDashboard,
@@ -39,6 +40,7 @@ export function Navigation() {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
+  const { settings } = useSettings();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -83,17 +85,17 @@ export function Navigation() {
         <Link href="/dashboard" className="flex items-center gap-3" onClick={closeMobileMenu}>
           <Image
             src="/logo.png"
-            alt="A'ish Raiments"
+            alt={settings.business_name}
             width={50}
             height={50}
             className="rounded-full"
           />
           <div className="flex flex-col">
-            <span className="text-lg font-bold" style={{ color: "#72D0CF" }}>
-              A&apos;ish Raiments
+            <span className="text-lg font-bold" style={{ color: settings.brand_primary_color }}>
+              {settings.business_name}
             </span>
-            <span className="text-xs" style={{ color: "#EC88C7" }}>
-              Fashion with Panache
+            <span className="text-xs" style={{ color: settings.brand_accent_color }}>
+              {settings.business_motto}
             </span>
           </div>
         </Link>
@@ -119,9 +121,10 @@ export function Navigation() {
               onClick={closeMobileMenu}
               className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-[#72D0CF] text-white"
+                  ? "text-white"
                   : "text-gray-700 hover:bg-gray-100"
               }`}
+              style={isActive ? { backgroundColor: settings.brand_primary_color } : {}}
             >
               <Icon className="h-4 w-4" />
               {item.label}
