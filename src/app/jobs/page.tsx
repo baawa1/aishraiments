@@ -125,6 +125,31 @@ export default function JobsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const totalCharged = (parseFloat(formData.material_cost) || 0) + (parseFloat(formData.labour_charge) || 0);
+    const amountPaid = parseFloat(formData.amount_paid) || 0;
+
+    // Auto-update status based on payment
+    let autoStatus = formData.status;
+    if (amountPaid >= totalCharged && totalCharged > 0) {
+      autoStatus = "Done";
+    } else if (amountPaid > 0 && amountPaid < totalCharged) {
+      autoStatus = "Part";
+    } else if (amountPaid === 0) {
+      autoStatus = "Pending";
+    }
+
+    // If status is changing to "Done", prompt for actual delivery date
+    let deliveryDateActual = editingJob?.delivery_date_actual || null;
+    if (autoStatus === "Done" && (!editingJob || editingJob.status !== "Done")) {
+      const today = new Date().toISOString().split("T")[0];
+      const userDate = prompt("Job completed! Enter actual delivery date (YYYY-MM-DD):", today);
+      if (userDate) {
+        deliveryDateActual = userDate;
+      } else {
+        deliveryDateActual = today;
+      }
+    }
+
     const data = {
       date: formData.date,
       customer_id: formData.customer_id || null,
@@ -134,9 +159,10 @@ export default function JobsPage() {
       item_sewn: formData.item_sewn,
       material_cost: parseFloat(formData.material_cost) || 0,
       labour_charge: parseFloat(formData.labour_charge) || 0,
-      amount_paid: parseFloat(formData.amount_paid) || 0,
-      status: formData.status,
+      amount_paid: amountPaid,
+      status: autoStatus,
       delivery_date_expected: formData.delivery_date_expected || null,
+      delivery_date_actual: deliveryDateActual,
       fitting_date: formData.fitting_date || null,
       measurements_reference: formData.measurements_reference || null,
       notes: formData.notes || null,
@@ -152,6 +178,39 @@ export default function JobsPage() {
         console.error("Error updating job:", error);
         alert("Error updating job");
       } else {
+        // If status changed to "Done", create/update sale record
+        if (autoStatus === "Done" && (!editingJob || editingJob.status !== "Done")) {
+          // Check if sale already exists for this job
+          const { data: existingSale } = await supabase
+            .from("sales_summary")
+            .select("id")
+            .eq("sewing_job_id", editingJob.id)
+            .single();
+
+          if (!existingSale) {
+            // Create new sale record
+            await supabase.from("sales_summary").insert([{
+              date: formData.date,
+              sale_type: "Sewing" as const,
+              customer_id: formData.customer_id || null,
+              customer_name: formData.customer_name,
+              total_amount: totalCharged,
+              amount_paid: amountPaid,
+              sewing_job_id: editingJob.id,
+              notes: `Auto-created from job: ${formData.item_sewn}`,
+            }]);
+          } else {
+            // Update existing sale
+            await supabase
+              .from("sales_summary")
+              .update({
+                total_amount: totalCharged,
+                amount_paid: amountPaid,
+              })
+              .eq("id", existingSale.id);
+          }
+        }
+
         // Update customer's last_order_date
         if (formData.customer_id) {
           await supabase
@@ -165,12 +224,30 @@ export default function JobsPage() {
         resetForm();
       }
     } else {
-      const { error } = await supabase.from("sewing_jobs").insert([data]);
+      const { error, data: newJob } = await supabase
+        .from("sewing_jobs")
+        .insert([data])
+        .select()
+        .single();
 
       if (error) {
         console.error("Error adding job:", error);
         alert("Error adding job");
       } else {
+        // If job is created with "Done" status, create sale record
+        if (autoStatus === "Done" && newJob) {
+          await supabase.from("sales_summary").insert([{
+            date: formData.date,
+            sale_type: "Sewing" as const,
+            customer_id: formData.customer_id || null,
+            customer_name: formData.customer_name,
+            total_amount: totalCharged,
+            amount_paid: amountPaid,
+            sewing_job_id: newJob.id,
+            notes: `Auto-created from job: ${formData.item_sewn}`,
+          }]);
+        }
+
         // Update customer's first and last order dates
         if (formData.customer_id) {
           const { data: customer } = await supabase

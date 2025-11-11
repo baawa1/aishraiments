@@ -56,6 +56,7 @@ export default function ReceivablesPage() {
     payment_method: "Transfer" as PaymentMethod,
     notes: "",
   });
+  const [validationError, setValidationError] = useState("");
 
   const supabase = createClient();
 
@@ -138,15 +139,30 @@ export default function ReceivablesPage() {
       payment_method: "Transfer",
       notes: "",
     });
+    setValidationError("");
     setCollectDialogOpen(true);
   };
 
   const handleSubmitCollection = async (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError("");
 
     if (!selectedCustomer) return;
 
     const amount = parseFloat(collectionForm.amount);
+
+    // Validate amount
+    if (isNaN(amount) || amount <= 0) {
+      setValidationError("Please enter a valid amount greater than zero.");
+      return;
+    }
+
+    if (amount > selectedCustomer.total_outstanding) {
+      setValidationError(
+        `Amount cannot exceed outstanding balance of ${formatCurrency(selectedCustomer.total_outstanding)}.`
+      );
+      return;
+    }
 
     // Record in collections log
     const { error: collectionError } = await supabase
@@ -384,12 +400,17 @@ export default function ReceivablesPage() {
                 type="number"
                 step="0.01"
                 value={collectionForm.amount}
-                onChange={(e) =>
-                  setCollectionForm({ ...collectionForm, amount: e.target.value })
-                }
+                onChange={(e) => {
+                  setCollectionForm({ ...collectionForm, amount: e.target.value });
+                  setValidationError(""); // Clear error on change
+                }}
                 max={selectedCustomer?.total_outstanding}
                 required
+                className={validationError ? "border-red-500" : ""}
               />
+              {validationError && (
+                <p className="text-sm text-red-600">{validationError}</p>
+              )}
             </div>
 
             <div className="space-y-2">

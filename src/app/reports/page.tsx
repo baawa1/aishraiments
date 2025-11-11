@@ -11,8 +11,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import { TrendingUp, DollarSign, Package } from "lucide-react";
+import { startOfMonth, endOfMonth, format } from "date-fns";
 
 interface MonthlyData {
   month: string;
@@ -27,32 +35,47 @@ interface MonthlyData {
 export default function ReportsPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState<string>("2025");
+  const [availableYears, setAvailableYears] = useState<string[]>([]);
 
   const supabase = createClient();
 
-  const fetchMonthlyData = useCallback(async () => {
-    setLoading(true);
+  // Fetch available years and reporting year from settings
+  const fetchSettings = useCallback(async () => {
+    const { data } = await supabase
+      .from("settings")
+      .select("*");
 
-    const months = [
-      "2025-01",
-      "2025-02",
-      "2025-03",
-      "2025-04",
-      "2025-05",
-      "2025-06",
-      "2025-07",
-      "2025-08",
-      "2025-09",
-      "2025-10",
-      "2025-11",
-      "2025-12",
-    ];
+    if (data) {
+      const reportingYear = data.find((s) => s.key === "reporting_year");
+      if (reportingYear) {
+        setSelectedYear(reportingYear.value);
+      }
+    }
+
+    // Generate available years (current year - 2 to current year + 1)
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let year = currentYear - 2; year <= currentYear + 1; year++) {
+      years.push(year.toString());
+    }
+    setAvailableYears(years);
+  }, [supabase]);
+
+  const fetchMonthlyData = useCallback(async (year: string) => {
+    setLoading(true);
 
     const data: MonthlyData[] = [];
 
-    for (const month of months) {
-      const startDate = `${month}-01`;
-      const endDate = `${month}-31`;
+    // Generate months for the selected year
+    for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+      const date = new Date(parseInt(year), monthIndex, 1);
+      const monthStart = startOfMonth(date);
+      const monthEnd = endOfMonth(date);
+
+      const startDate = format(monthStart, "yyyy-MM-dd");
+      const endDate = format(monthEnd, "yyyy-MM-dd");
+      const monthKey = format(date, "yyyy-MM");
 
       // Get sales for the month
       const { data: salesData } = await supabase
@@ -83,7 +106,7 @@ export default function ReportsPage() {
       const profit = amountCollected - materialCost - expenses;
 
       data.push({
-        month,
+        month: monthKey,
         totalSales,
         amountCollected,
         outstanding,
@@ -98,8 +121,14 @@ export default function ReportsPage() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchMonthlyData();
-  }, [fetchMonthlyData]);
+    fetchSettings();
+  }, [fetchSettings]);
+
+  useEffect(() => {
+    if (selectedYear) {
+      fetchMonthlyData(selectedYear);
+    }
+  }, [selectedYear, fetchMonthlyData]);
 
   const getMonthName = (monthStr: string) => {
     const [year, month] = monthStr.split("-");
@@ -130,18 +159,37 @@ export default function ReportsPage() {
 
   return (
     <div className="flex-1 space-y-6 p-8">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Monthly Reports</h2>
-        <p className="text-muted-foreground">
-          View monthly performance and trends
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Monthly Reports</h2>
+          <p className="text-muted-foreground">
+            View monthly performance and trends
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="year-select" className="text-sm font-medium">
+            Year:
+          </label>
+          <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <SelectTrigger className="w-[120px]" id="year-select">
+              <SelectValue placeholder="Select year" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableYears.map((year) => (
+                <SelectItem key={year} value={year}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Year Total Sales
+              {selectedYear} Total Sales
             </CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -155,7 +203,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Year Total Profit
+              {selectedYear} Total Profit
             </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -169,7 +217,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Year Total Expenses
+              {selectedYear} Total Expenses
             </CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
