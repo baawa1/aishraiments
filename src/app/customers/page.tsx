@@ -71,61 +71,26 @@ export default function CustomersPage() {
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
 
-    // Fetch customers with their stats
-    const { data: customersData, error: customersError } = await supabase
-      .from("customers")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      // Use optimized API route to avoid N+1 query problem
+      const response = await fetch('/api/customers/with-stats');
+      const result = await response.json();
 
-    if (customersError) {
-      console.error("Error fetching customers:", customersError);
+      if (!response.ok || result.error) {
+        console.error("Error fetching customers:", result.error);
+        toast.error("Failed to load customers");
+        setLoading(false);
+        return;
+      }
+
+      setCustomers(result.data || []);
+    } catch (error) {
+      console.error("Unexpected error fetching customers:", error);
+      toast.error("Failed to load customers");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    // Fetch stats for each customer
-    const customersWithStats = await Promise.all(
-      (customersData || []).map(async (customer) => {
-        // Get total orders
-        const { count: ordersCount } = await supabase
-          .from("sewing_jobs")
-          .select("*", { count: "exact", head: true })
-          .eq("customer_id", customer.id);
-
-        // Get lifetime value
-        const { data: salesData } = await supabase
-          .from("sales_summary")
-          .select("amount_paid")
-          .eq("customer_id", customer.id);
-
-        const lifetimeValue = salesData?.reduce(
-          (sum, sale) => sum + Number(sale.amount_paid),
-          0
-        ) || 0;
-
-        // Get outstanding balance
-        const { data: balanceData } = await supabase
-          .from("sales_summary")
-          .select("balance")
-          .eq("customer_id", customer.id);
-
-        const outstandingBalance = balanceData?.reduce(
-          (sum, sale) => sum + Number(sale.balance),
-          0
-        ) || 0;
-
-        return {
-          ...customer,
-          total_orders: ordersCount || 0,
-          lifetime_value: lifetimeValue,
-          outstanding_balance: outstandingBalance,
-        };
-      })
-    );
-
-    setCustomers(customersWithStats);
-    setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchCustomers();

@@ -10,9 +10,16 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardMetrics } from "@/types/database";
+import { redirect } from "next/navigation";
 
 async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const supabase = createServerClient();
+
+  // Verify authentication
+  const { data: { session }, error: authError } = await supabase.auth.getSession();
+  if (authError || !session) {
+    redirect('/login');
+  }
 
   // Fetch all data in parallel
   const [
@@ -48,8 +55,15 @@ async function getDashboardMetrics(): Promise<DashboardMetrics> {
 }
 
 export default async function DashboardPage() {
-  const metrics = await getDashboardMetrics();
   const supabase = createServerClient();
+
+  // Verify authentication
+  const { data: { session }, error: authError } = await supabase.auth.getSession();
+  if (authError || !session) {
+    redirect('/login');
+  }
+
+  const metrics = await getDashboardMetrics();
 
   // Get recent jobs
   const { data: recentJobs } = await supabase
@@ -81,28 +95,28 @@ export default async function DashboardPage() {
           title="Total Sales"
           value={metrics.totalSales}
           icon={Receipt}
-          color="#72D0CF"
+          colorVariant="primary"
           description="All time sales"
         />
         <MetricCard
           title="Amount Collected"
           value={metrics.amountCollected}
           icon={Wallet}
-          color="#EC88C7"
+          colorVariant="accent"
           description="Payments received"
         />
         <MetricCard
           title="Outstanding Balance"
           value={metrics.outstandingBalance}
           icon={AlertCircle}
-          color="#F59E0B"
+          colorVariant="warning"
           description="Pending payments"
         />
         <MetricCard
           title="Profit"
           value={metrics.profit}
           icon={TrendingUp}
-          color={metrics.profit >= 0 ? "#10B981" : "#EF4444"}
+          colorVariant={metrics.profit >= 0 ? "success" : "error"}
           description="Revenue minus costs"
         />
       </div>
@@ -112,21 +126,21 @@ export default async function DashboardPage() {
           title="Total Expenses"
           value={metrics.totalExpenses}
           icon={DollarSign}
-          color="#EC88C7"
+          colorVariant="accent"
           description="Operating expenses"
         />
         <MetricCard
           title="Material Cost"
           value={metrics.materialCost}
           icon={Package}
-          color="#72D0CF"
+          colorVariant="primary"
           description="Fabric & materials"
         />
         <MetricCard
           title="Inventory Value"
           value={metrics.inventoryValue}
           icon={Package}
-          color="#6366F1"
+          colorVariant="info"
           description="Stock on hand"
         />
       </div>
@@ -152,7 +166,7 @@ export default async function DashboardPage() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium" style={{ color: "#72D0CF" }}>
+                      <p className="font-medium text-brand-primary">
                         ₦{Number(job.total_charged).toLocaleString()}
                       </p>
                       <span

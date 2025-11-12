@@ -175,3 +175,60 @@ export interface Receivable {
   last_sale_date: string;
   is_overdue: boolean;
 }
+
+// Database schema type for Supabase
+export interface Database {
+  public: {
+    Tables: {
+      customers: {
+        Row: Customer;
+        Insert: CustomerInsert;
+        Update: CustomerUpdate;
+      };
+      inventory_items: {
+        Row: InventoryItem;
+        Insert: InventoryItemInsert;
+        Update: InventoryItemUpdate;
+      };
+      sewing_jobs: {
+        Row: SewingJob;
+        Insert: SewingJobInsert;
+        Update: SewingJobUpdate;
+      };
+      expenses: {
+        Row: Expense;
+        Insert: ExpenseInsert;
+        Update: ExpenseUpdate;
+      };
+      sales_summary: {
+        Row: SalesSummary;
+        Insert: SalesSummaryInsert;
+        Update: SalesSummaryUpdate;
+      };
+      collections_log: {
+        Row: CollectionLog;
+        Insert: CollectionLogInsert;
+        Update: CollectionLogUpdate;
+      };
+      settings: {
+        Row: Setting;
+        Insert: SettingInsert;
+        Update: SettingUpdate;
+      };
+    };
+    Views: {
+      [_: string]: never;
+    };
+    Functions: {
+      [_: string]: never;
+    };
+    Enums: {
+      fabric_category: FabricCategory;
+      job_status: JobStatus;
+      fabric_source: FabricSource;
+      expense_type: ExpenseType;
+      sale_type: SaleType;
+      payment_method: PaymentMethod;
+    };
+  };
+}

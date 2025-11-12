@@ -102,9 +102,8 @@ export default function LoginPage() {
             )}
             <Button
               type="submit"
-              className="w-full"
+              className="w-full bg-brand-primary hover:bg-brand-primary/90"
               disabled={loading}
-              style={{ backgroundColor: "#72D0CF" }}
             >
               {loading ? "Signing in..." : "Sign In"}
             </Button>
