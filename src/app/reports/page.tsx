@@ -23,6 +23,9 @@ import { formatCurrency } from "@/lib/utils";
 import { TrendingUp, DollarSign, Package, BarChart3, PieChart as PieChartIcon, TrendingUpIcon } from "lucide-react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
+import { MobileCardView } from "@/components/ui/mobile-card-view";
+import { DetailSheet } from "@/components/ui/detail-sheet";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/table-pagination";
 import {
@@ -65,8 +68,21 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<string>("2025");
   const [availableYears, setAvailableYears] = useState<string[]>([]);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [selectedMonthData, setSelectedMonthData] = useState<MonthlyData | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const supabase = createClient();
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024); // lg breakpoint
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Fetch available years and reporting year from settings
   const fetchSettings = useCallback(async () => {
@@ -119,68 +135,97 @@ export default function ReportsPage() {
   const fetchMonthlyData = useCallback(async (year: string) => {
     setLoading(true);
 
-    const data: MonthlyData[] = [];
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
 
-    // Generate months for the selected year
-    for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
-      const date = new Date(parseInt(year), monthIndex, 1);
-      const monthStart = startOfMonth(date);
-      const monthEnd = endOfMonth(date);
-
-      const startDate = format(monthStart, "yyyy-MM-dd");
-      const endDate = format(monthEnd, "yyyy-MM-dd");
-      const monthKey = format(date, "yyyy-MM");
-
-      // Get sales for the month
-      const { data: salesData } = await supabase
+    // Fetch all data for the year in parallel (3 queries instead of 36)
+    const [
+      { data: salesData },
+      { data: expensesData },
+      { data: jobsData }
+    ] = await Promise.all([
+      supabase
         .from("sales_summary")
-        .select("total_amount, amount_paid, balance, inventory_profit")
+        .select("date, total_amount, amount_paid, balance, inventory_profit")
         .gte("date", startDate)
-        .lte("date", endDate);
-
-      // Get expenses for the month
-      const { data: expensesData } = await supabase
+        .lte("date", endDate),
+      supabase
         .from("expenses")
-        .select("amount")
+        .select("date, amount")
         .gte("date", startDate)
-        .lte("date", endDate);
-
-      // Get material costs and sewing profit for the month
-      const { data: jobsData } = await supabase
+        .lte("date", endDate),
+      supabase
         .from("sewing_jobs")
-        .select("material_cost, profit")
+        .select("date, material_cost, profit")
         .gte("date", startDate)
-        .lte("date", endDate);
+        .lte("date", endDate)
+    ]);
 
-      const totalSales = salesData?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0;
-      const amountCollected = salesData?.reduce((sum, s) => sum + Number(s.amount_paid), 0) || 0;
-      const outstanding = salesData?.reduce((sum, s) => sum + Number(s.balance), 0) || 0;
-      const materialCost = jobsData?.reduce((sum, j) => sum + Number(j.material_cost), 0) || 0;
-      const expenses = expensesData?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+    // Determine how many months to show
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth(); // 0-11
+    const selectedYearNum = parseInt(year);
 
-      // Calculate inventory profit from sales
-      const inventoryProfit = salesData?.reduce((sum, s) =>
-        sum + (s.inventory_profit ? Number(s.inventory_profit) : 0), 0) || 0;
+    // If current year, only show months up to current month; otherwise show all 12
+    const maxMonthIndex = selectedYearNum === currentYear ? currentMonth : 11;
 
-      // Calculate sewing profit from jobs
-      const sewingProfit = jobsData?.reduce((sum, j) => sum + Number(j.profit), 0) || 0;
-
-      // Total profit is combination of sewing profit and inventory profit
-      const profit = sewingProfit + inventoryProfit;
-
-      data.push({
+    // Initialize data structure for months up to maxMonthIndex
+    const monthlyDataMap = new Map<string, MonthlyData>();
+    for (let monthIndex = 0; monthIndex <= maxMonthIndex; monthIndex++) {
+      const date = new Date(selectedYearNum, monthIndex, 1);
+      const monthKey = format(date, "yyyy-MM");
+      monthlyDataMap.set(monthKey, {
         month: monthKey,
-        totalSales,
-        amountCollected,
-        outstanding,
-        materialCost,
-        expenses,
-        profit,
-        inventoryProfit,
-        sewingProfit,
+        totalSales: 0,
+        amountCollected: 0,
+        outstanding: 0,
+        materialCost: 0,
+        expenses: 0,
+        profit: 0,
+        inventoryProfit: 0,
+        sewingProfit: 0,
       });
     }
 
+    // Aggregate sales data by month
+    salesData?.forEach((sale) => {
+      const monthKey = sale.date.substring(0, 7); // Extract YYYY-MM
+      const monthData = monthlyDataMap.get(monthKey);
+      if (monthData) {
+        monthData.totalSales += Number(sale.total_amount);
+        monthData.amountCollected += Number(sale.amount_paid);
+        monthData.outstanding += Number(sale.balance);
+        monthData.inventoryProfit += sale.inventory_profit ? Number(sale.inventory_profit) : 0;
+      }
+    });
+
+    // Aggregate expenses data by month
+    expensesData?.forEach((expense) => {
+      const monthKey = expense.date.substring(0, 7);
+      const monthData = monthlyDataMap.get(monthKey);
+      if (monthData) {
+        monthData.expenses += Number(expense.amount);
+      }
+    });
+
+    // Aggregate jobs data by month
+    jobsData?.forEach((job) => {
+      const monthKey = job.date.substring(0, 7);
+      const monthData = monthlyDataMap.get(monthKey);
+      if (monthData) {
+        monthData.materialCost += Number(job.material_cost);
+        monthData.sewingProfit += Number(job.profit);
+      }
+    });
+
+    // Calculate total profit for each month
+    monthlyDataMap.forEach((monthData) => {
+      monthData.profit = monthData.sewingProfit + monthData.inventoryProfit;
+    });
+
+    // Convert map to array and reverse to show most recent months first
+    const data = Array.from(monthlyDataMap.values()).reverse();
     setMonthlyData(data);
     setLoading(false);
   }, [supabase]);
@@ -202,6 +247,11 @@ export default function ReportsPage() {
       month: "long",
       year: "numeric",
     });
+  };
+
+  const handleCardClick = (data: MonthlyData) => {
+    setSelectedMonthData(data);
+    setDetailSheetOpen(true);
   };
 
   const yearTotals = monthlyData.reduce(
@@ -342,7 +392,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Bar Chart: Monthly Total Sales */}
         <Card>
           <CardHeader>
@@ -353,13 +403,14 @@ export default function ReportsPage() {
             <CardDescription>Sales performance across the year</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={isMobile ? 250 : 300}>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
+                <XAxis dataKey="month" style={{ fontSize: isMobile ? '12px' : '14px' }} />
+                <YAxis style={{ fontSize: isMobile ? '12px' : '14px' }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="sales" fill={settings.brand_primary_color} name="Total Sales" />
+                {!isMobile && <Bar dataKey="sales" fill={settings.brand_primary_color} name="Total Sales" />}
+                {isMobile && <Bar dataKey="sales" fill={settings.brand_primary_color} />}
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -375,13 +426,13 @@ export default function ReportsPage() {
             <CardDescription>Profit trends throughout the year</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={isMobile ? 250 : 300}>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
+                <XAxis dataKey="month" style={{ fontSize: isMobile ? '12px' : '14px' }} />
+                <YAxis style={{ fontSize: isMobile ? '12px' : '14px' }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="profit" fill="#10B981" name="Profit">
+                <Bar dataKey="profit" fill="#10B981" name={isMobile ? undefined : "Profit"}>
                   {chartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? "#10B981" : "#EF4444"} />
                   ))}
@@ -401,13 +452,13 @@ export default function ReportsPage() {
             <CardDescription>Compare revenue and costs over time</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={isMobile ? 250 : 300}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
+                <XAxis dataKey="month" style={{ fontSize: isMobile ? '12px' : '14px' }} />
+                <YAxis style={{ fontSize: isMobile ? '12px' : '14px' }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend />
+                {!isMobile && <Legend />}
                 <Line type="monotone" dataKey="sales" stroke={settings.brand_primary_color} strokeWidth={2} name="Sales" />
                 <Line type="monotone" dataKey="expenses" stroke={settings.brand_accent_color} strokeWidth={2} name="Expenses" />
               </LineChart>
@@ -425,18 +476,22 @@ export default function ReportsPage() {
             <CardDescription>Distribution of expenses across categories</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={isMobile ? 250 : 300}>
               <PieChart>
                 <Pie
                   data={expenseBreakdown}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ type, percent }) => `${type} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
+                  label={isMobile
+                    ? ({ percent }) => `${(percent * 100).toFixed(0)}%`
+                    : ({ type, percent }) => `${type} ${(percent * 100).toFixed(0)}%`
+                  }
+                  outerRadius={isMobile ? 60 : 80}
                   fill="#8884d8"
                   dataKey="amount"
                   nameKey="type"
+                  style={{ fontSize: isMobile ? '11px' : '14px' }}
                 >
                   {expenseBreakdown.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -449,135 +504,192 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <div className="space-y-4">
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Month</TableHead>
-              <TableHead className="text-right">Total Sales</TableHead>
-              <TableHead className="text-right">Collected</TableHead>
-              <TableHead className="text-right">Outstanding</TableHead>
-              <TableHead className="text-right">Material Cost</TableHead>
-              <TableHead className="text-right">Expenses</TableHead>
-              <TableHead className="text-right">Sewing Profit</TableHead>
-              <TableHead className="text-right">Inventory Profit</TableHead>
-              <TableHead className="text-right">Total Profit</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={9} rows={5} />
-            ) : (
-              currentItems.map((data) => (
-                <TableRow key={data.month}>
-                  <TableCell className="font-medium">
-                    {getMonthName(data.month)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(data.totalSales)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(data.amountCollected)}
-                  </TableCell>
-                  <TableCell className="text-right text-orange-600">
-                    {formatCurrency(data.outstanding)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(data.materialCost)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(data.expenses)}
-                  </TableCell>
-                  <TableCell className="text-right">
+      {/* Mobile Card View */}
+      <div className="lg:hidden">
+        {loading ? (
+          <MobileCardSkeleton rows={5} />
+        ) : (
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage="No monthly data found"
+              renderCard={(data) => (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">{getMonthName(data.month)}</h3>
                     <span
-                      className={
-                        data.sewingProfit >= 0
-                          ? "text-green-600 font-medium"
-                          : "text-red-600 font-medium"
-                      }
-                    >
-                      {formatCurrency(data.sewingProfit)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span
-                      className={
-                        data.inventoryProfit >= 0
-                          ? "text-green-600 font-medium"
-                          : "text-red-600 font-medium"
-                      }
-                    >
-                      {formatCurrency(data.inventoryProfit)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span
-                      className={
-                        data.profit >= 0
-                          ? "text-green-600 font-medium"
-                          : "text-red-600 font-medium"
-                      }
+                      className={`text-lg font-bold ${
+                        data.profit >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
                     >
                       {formatCurrency(data.profit)}
                     </span>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-            <TableRow className="bg-gray-100 font-bold">
-              <TableCell>TOTAL</TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(yearTotals.totalSales)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(yearTotals.amountCollected)}
-              </TableCell>
-              <TableCell className="text-right text-orange-600">
-                {formatCurrency(yearTotals.outstanding)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(yearTotals.materialCost)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(yearTotals.expenses)}
-              </TableCell>
-              <TableCell className="text-right">
-                <span
-                  className={
-                    yearTotals.sewingProfit >= 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }
-                >
-                  {formatCurrency(yearTotals.sewingProfit)}
-                </span>
-              </TableCell>
-              <TableCell className="text-right">
-                <span
-                  className={
-                    yearTotals.inventoryProfit >= 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }
-                >
-                  {formatCurrency(yearTotals.inventoryProfit)}
-                </span>
-              </TableCell>
-              <TableCell className="text-right">
-                <span
-                  className={
-                    yearTotals.profit >= 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }
-                >
-                  {formatCurrency(yearTotals.profit)}
-                </span>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Total Sales:</span>
+                      <div className="font-semibold">{formatCurrency(data.totalSales)}</div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Collected:</span>
+                      <div className="font-semibold">{formatCurrency(data.amountCollected)}</div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Outstanding:</span>
+                      <div className="font-semibold text-orange-600">{formatCurrency(data.outstanding)}</div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Expenses:</span>
+                      <div className="font-semibold">{formatCurrency(data.expenses)}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Month</TableHead>
+                <TableHead className="text-right">Total Sales</TableHead>
+                <TableHead className="text-right">Collected</TableHead>
+                <TableHead className="text-right">Outstanding</TableHead>
+                <TableHead className="text-right">Material Cost</TableHead>
+                <TableHead className="text-right">Expenses</TableHead>
+                <TableHead className="text-right">Sewing Profit</TableHead>
+                <TableHead className="text-right">Inventory Profit</TableHead>
+                <TableHead className="text-right">Total Profit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={9} rows={5} />
+              ) : (
+                currentItems.map((data) => (
+                  <TableRow key={data.month}>
+                    <TableCell className="font-medium">
+                      {getMonthName(data.month)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(data.totalSales)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(data.amountCollected)}
+                    </TableCell>
+                    <TableCell className="text-right text-orange-600">
+                      {formatCurrency(data.outstanding)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(data.materialCost)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(data.expenses)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className={
+                          data.sewingProfit >= 0
+                            ? "text-green-600 font-medium"
+                            : "text-red-600 font-medium"
+                        }
+                      >
+                        {formatCurrency(data.sewingProfit)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className={
+                          data.inventoryProfit >= 0
+                            ? "text-green-600 font-medium"
+                            : "text-red-600 font-medium"
+                        }
+                      >
+                        {formatCurrency(data.inventoryProfit)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className={
+                          data.profit >= 0
+                            ? "text-green-600 font-medium"
+                            : "text-red-600 font-medium"
+                        }
+                      >
+                        {formatCurrency(data.profit)}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+              <TableRow className="bg-gray-100 font-bold">
+                <TableCell>TOTAL</TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(yearTotals.totalSales)}
+                </TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(yearTotals.amountCollected)}
+                </TableCell>
+                <TableCell className="text-right text-orange-600">
+                  {formatCurrency(yearTotals.outstanding)}
+                </TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(yearTotals.materialCost)}
+                </TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(yearTotals.expenses)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <span
+                    className={
+                      yearTotals.sewingProfit >= 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }
+                  >
+                    {formatCurrency(yearTotals.sewingProfit)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right">
+                  <span
+                    className={
+                      yearTotals.inventoryProfit >= 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }
+                  >
+                    {formatCurrency(yearTotals.inventoryProfit)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right">
+                  <span
+                    className={
+                      yearTotals.profit >= 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }
+                  >
+                    {formatCurrency(yearTotals.profit)}
+                  </span>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </div>
         {!loading && (
           <TablePagination
@@ -591,6 +703,91 @@ export default function ReportsPage() {
           />
         )}
       </div>
+
+      {/* Mobile Detail Sheet */}
+      <DetailSheet
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        title="Monthly Report Details"
+      >
+        {selectedMonthData && (
+          <div className="space-y-4">
+            <div className="text-center pb-4 border-b">
+              <h3 className="text-xl font-bold">{getMonthName(selectedMonthData.month)}</h3>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-muted-foreground">Total Sales:</span>
+                <span className="font-bold" style={{ color: settings.brand_primary_color }}>
+                  {formatCurrency(selectedMonthData.totalSales)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-muted-foreground">Amount Collected:</span>
+                <span className="font-bold text-green-600">
+                  {formatCurrency(selectedMonthData.amountCollected)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-muted-foreground">Outstanding:</span>
+                <span className="font-bold text-orange-600">
+                  {formatCurrency(selectedMonthData.outstanding)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-muted-foreground">Material Cost:</span>
+                <span className="font-bold">
+                  {formatCurrency(selectedMonthData.materialCost)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-muted-foreground">Expenses:</span>
+                <span className="font-bold">
+                  {formatCurrency(selectedMonthData.expenses)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-muted-foreground">Sewing Profit:</span>
+                <span
+                  className={`font-bold ${
+                    selectedMonthData.sewingProfit >= 0 ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {formatCurrency(selectedMonthData.sewingProfit)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-muted-foreground">Inventory Profit:</span>
+                <span
+                  className={`font-bold ${
+                    selectedMonthData.inventoryProfit >= 0 ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {formatCurrency(selectedMonthData.inventoryProfit)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-100 to-gray-50 rounded-lg border-2 border-gray-200">
+                <span className="text-base font-medium">Total Profit:</span>
+                <span
+                  className={`text-xl font-bold ${
+                    selectedMonthData.profit >= 0 ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {formatCurrency(selectedMonthData.profit)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </DetailSheet>
     </div>
   );
 }
