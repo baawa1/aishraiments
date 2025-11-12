@@ -41,6 +41,7 @@ import { Plus, Pencil, Trash2, RefreshCcw, X } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { DateRange } from "react-day-picker";
 
 const expenseTypes: ExpenseType[] = [
@@ -511,7 +512,7 @@ export default function ExpensesPage() {
       {/* Mobile Card View */}
       <div className="lg:hidden">
         {loading ? (
-          <TableSkeleton columns={1} rows={5} />
+          <MobileCardSkeleton rows={5} />
         ) : (
           <MobileCardView
             data={filteredExpenses}

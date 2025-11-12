@@ -4,6 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CollectionLog, PaymentMethod } from "@/types/database";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { MobileCardView } from "@/components/ui/mobile-card-view";
+import { DetailSheet } from "@/components/ui/detail-sheet";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -20,8 +25,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Wallet, TrendingUp, Calendar } from "lucide-react";
+import { Wallet, TrendingUp, Calendar, X } from "lucide-react";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
+import { DateRange } from "react-day-picker";
 
 const paymentMethods: PaymentMethod[] = ["Transfer", "Cash", "POS", "Other"];
 
@@ -30,8 +37,9 @@ export default function CollectionsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [selectedCollection, setSelectedCollection] = useState<CollectionLog | null>(null);
 
   const supabase = createClient();
 
@@ -44,11 +52,11 @@ export default function CollectionsPage() {
       .order("date", { ascending: false });
 
     // Apply date range filters if provided
-    if (startDate) {
-      query = query.gte("date", startDate);
+    if (dateRange?.from) {
+      query = query.gte("date", dateRange.from.toISOString().split("T")[0]);
     }
-    if (endDate) {
-      query = query.lte("date", endDate);
+    if (dateRange?.to) {
+      query = query.lte("date", dateRange.to.toISOString().split("T")[0]);
     }
 
     const { data, error } = await query;
@@ -59,7 +67,7 @@ export default function CollectionsPage() {
       setCollections(data || []);
     }
     setLoading(false);
-  }, [supabase, startDate, endDate]);
+  }, [supabase, dateRange]);
 
   useEffect(() => {
     fetchCollections();
@@ -86,8 +94,21 @@ export default function CollectionsPage() {
     return acc;
   }, {} as Record<PaymentMethod, number>);
 
+  const hasActiveFilters = searchTerm !== "" || methodFilter !== "all" || dateRange !== undefined;
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setMethodFilter("all");
+    setDateRange(undefined);
+  };
+
+  const handleCardClick = (collection: CollectionLog) => {
+    setSelectedCollection(collection);
+    setDetailSheetOpen(true);
+  };
+
   return (
-    <div className="flex-1 space-y-6 p-8">
+    <div className="flex-1 space-y-6 p-4 sm:p-8">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Collections Log</h2>
         <p className="text-muted-foreground">
@@ -95,65 +116,67 @@ export default function CollectionsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-lg border bg-card p-6">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
               Total Collected
             </h3>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="mt-2 text-2xl font-bold" style={{ color: "#10B981" }}>
+          <div className="mt-2 text-xl sm:text-2xl font-bold" style={{ color: "#10B981" }}>
             {formatCurrency(totalCollected)}
           </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
+        <div className="rounded-lg border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
               Transfer
             </h3>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="mt-2 text-xl font-bold" style={{ color: "#72D0CF" }}>
+          <div className="mt-2 text-lg sm:text-xl font-bold" style={{ color: "#72D0CF" }}>
             {formatCurrency(collectionsByMethod["Transfer"] || 0)}
           </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
+        <div className="rounded-lg border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
               Cash
             </h3>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="mt-2 text-xl font-bold" style={{ color: "#EC88C7" }}>
+          <div className="mt-2 text-lg sm:text-xl font-bold" style={{ color: "#EC88C7" }}>
             {formatCurrency(collectionsByMethod["Cash"] || 0)}
           </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
+        <div className="rounded-lg border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
               POS
             </h3>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="mt-2 text-xl font-bold text-indigo-600">
+          <div className="mt-2 text-lg sm:text-xl font-bold text-indigo-600">
             {formatCurrency(collectionsByMethod["POS"] || 0)}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4 flex-wrap">
-        <Input
-          placeholder="Search by customer name..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1">
+          <Input
+            placeholder="Search by customer name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
         <Select value={methodFilter} onValueChange={setMethodFilter}>
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="w-full sm:w-[150px]">
             <SelectValue placeholder="All Methods" />
           </SelectTrigger>
           <SelectContent>
@@ -166,31 +189,68 @@ export default function CollectionsPage() {
           </SelectContent>
         </Select>
 
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <Input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            placeholder="Start date"
-            className="w-[150px]"
-          />
-          <span className="text-sm text-muted-foreground">to</span>
-          <Input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            placeholder="End date"
-            className="w-[150px]"
-          />
-        </div>
+        <DateRangePicker
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          className="w-full sm:w-auto"
+        />
 
-        <div className="ml-auto text-sm text-muted-foreground">
-          Showing <span className="font-bold">{filteredCollections.length}</span> collections
-        </div>
+        {hasActiveFilters && (
+          <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
+            <X className="mr-2 h-4 w-4" />
+            Clear Filters
+          </Button>
+        )}
       </div>
 
-      <div className="rounded-md border">
+      {/* Mobile Card View */}
+      <div className="lg:hidden">
+        {loading ? (
+          <MobileCardSkeleton rows={5} />
+        ) : (
+          <MobileCardView
+            data={filteredCollections}
+            onCardClick={handleCardClick}
+            emptyMessage={collections.length === 0 ? "No payment collections recorded yet." : "No collections match your filters."}
+            renderCard={(collection) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-semibold truncate">{collection.customer_name}</span>
+                  <Badge
+                    variant="secondary"
+                    className={
+                      collection.payment_method === "Transfer"
+                        ? "bg-blue-100 text-blue-700"
+                        : collection.payment_method === "Cash"
+                        ? "bg-green-100 text-green-700"
+                        : collection.payment_method === "POS"
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-gray-100 text-gray-700"
+                    }
+                  >
+                    {collection.payment_method}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Amount:</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-green-600">{formatCurrency(Number(collection.amount))}</span>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {formatDate(collection.date)}
+                  {collection.notes && ` • ${collection.notes}`}
+                </div>
+              </div>
+            )}
+          />
+        )}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden lg:block rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -250,11 +310,62 @@ export default function CollectionsPage() {
       <div className="rounded-md border bg-gray-50 p-4">
         <div className="flex justify-between items-center">
           <span className="text-sm font-medium">Total for this period:</span>
-          <span className="text-2xl font-bold text-green-600">
+          <span className="text-lg sm:text-2xl font-bold text-green-600">
             {formatCurrency(totalCollected)}
           </span>
         </div>
       </div>
+
+      {/* Mobile Detail Sheet */}
+      <DetailSheet
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        title="Collection Details"
+      >
+        {selectedCollection && (
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Date:</span>
+                <span className="font-medium">{formatDate(selectedCollection.date)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Customer:</span>
+                <span className="font-semibold">{selectedCollection.customer_name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Amount:</span>
+                <span className="font-bold text-green-600">
+                  {formatCurrency(Number(selectedCollection.amount))}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Payment Method:</span>
+                <Badge
+                  variant="secondary"
+                  className={
+                    selectedCollection.payment_method === "Transfer"
+                      ? "bg-blue-100 text-blue-700"
+                      : selectedCollection.payment_method === "Cash"
+                      ? "bg-green-100 text-green-700"
+                      : selectedCollection.payment_method === "POS"
+                      ? "bg-purple-100 text-purple-700"
+                      : "bg-gray-100 text-gray-700"
+                  }
+                >
+                  {selectedCollection.payment_method}
+                </Badge>
+              </div>
+              {selectedCollection.notes && (
+                <div className="pt-2 border-t">
+                  <span className="text-sm text-muted-foreground block mb-1">Notes:</span>
+                  <p className="text-sm">{selectedCollection.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </DetailSheet>
     </div>
   );
 }

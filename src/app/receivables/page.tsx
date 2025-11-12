@@ -5,6 +5,12 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DatePicker } from "@/components/ui/date-picker";
+import { MobileCardView } from "@/components/ui/mobile-card-view";
+import { DetailSheet } from "@/components/ui/detail-sheet";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -33,6 +39,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { PaymentMethod } from "@/types/database";
 import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 
 interface Receivable {
   customer_id: string | null;
@@ -48,9 +55,12 @@ const paymentMethods: PaymentMethod[] = ["Transfer", "Cash", "POS", "Other"];
 export default function ReceivablesPage() {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [collectDialogOpen, setCollectDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Receivable | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [selectedDetailCustomer, setSelectedDetailCustomer] = useState<Receivable | null>(null);
 
   const [collectionForm, setCollectionForm] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -148,14 +158,19 @@ export default function ReceivablesPage() {
   const handleSubmitCollection = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError("");
+    setSubmitting(true);
 
-    if (!selectedCustomer) return;
+    if (!selectedCustomer) {
+      setSubmitting(false);
+      return;
+    }
 
     const amount = parseFloat(collectionForm.amount);
 
     // Validate amount
     if (isNaN(amount) || amount <= 0) {
       setValidationError("Please enter a valid amount greater than zero.");
+      setSubmitting(false);
       return;
     }
 
@@ -163,60 +178,98 @@ export default function ReceivablesPage() {
       setValidationError(
         `Amount cannot exceed outstanding balance of ${formatCurrency(selectedCustomer.total_outstanding)}.`
       );
+      setSubmitting(false);
       return;
     }
 
-    // Record in collections log
-    const { error: collectionError } = await supabase
-      .from("collections_log")
-      .insert([
-        {
-          date: collectionForm.date,
-          customer_id: selectedCustomer.customer_id,
-          customer_name: selectedCustomer.customer_name,
-          amount: amount,
-          payment_method: collectionForm.payment_method,
-          notes: collectionForm.notes || null,
-        },
-      ]);
+    try {
+      // Record in collections log
+      const { error: collectionError } = await supabase
+        .from("collections_log")
+        .insert([
+          {
+            date: collectionForm.date,
+            customer_id: selectedCustomer.customer_id,
+            customer_name: selectedCustomer.customer_name,
+            amount: amount,
+            payment_method: collectionForm.payment_method,
+            notes: collectionForm.notes || null,
+          },
+        ]);
 
-    if (collectionError) {
-      console.error("Error logging collection:", collectionError);
-      toast.error("Error logging collection");
-      return;
-    }
-
-    // Update sales summary - find oldest unpaid sales and apply payment
-    const { data: unpaidSales } = await supabase
-      .from("sales_summary")
-      .select("*")
-      .eq("customer_name", selectedCustomer.customer_name)
-      .gt("balance", 0)
-      .order("date", { ascending: true });
-
-    if (unpaidSales) {
-      let remainingAmount = amount;
-
-      for (const sale of unpaidSales) {
-        if (remainingAmount <= 0) break;
-
-        const saleBalance = Number(sale.balance);
-        const paymentForThisSale = Math.min(remainingAmount, saleBalance);
-        const newAmountPaid = Number(sale.amount_paid) + paymentForThisSale;
-
-        await supabase
-          .from("sales_summary")
-          .update({ amount_paid: newAmountPaid })
-          .eq("id", sale.id);
-
-        remainingAmount -= paymentForThisSale;
+      if (collectionError) {
+        console.error("Error logging collection:", collectionError);
+        toast.error("Error logging collection");
+        setSubmitting(false);
+        return;
       }
-    }
 
-    await fetchReceivables();
-    setCollectDialogOpen(false);
-    setSelectedCustomer(null);
-    toast.success("Payment recorded successfully");
+      // Update sales summary - find oldest unpaid sales and apply payment
+      const { data: unpaidSales } = await supabase
+        .from("sales_summary")
+        .select("*")
+        .eq("customer_name", selectedCustomer.customer_name)
+        .gt("balance", 0)
+        .order("date", { ascending: true });
+
+      if (unpaidSales) {
+        let remainingAmount = amount;
+
+        for (const sale of unpaidSales) {
+          if (remainingAmount <= 0) break;
+
+          const saleBalance = Number(sale.balance);
+          const paymentForThisSale = Math.min(remainingAmount, saleBalance);
+          const newAmountPaid = Number(sale.amount_paid) + paymentForThisSale;
+
+          await supabase
+            .from("sales_summary")
+            .update({ amount_paid: newAmountPaid })
+            .eq("id", sale.id);
+
+          // **CRITICAL: Auto-sync to sewing jobs if this sale is linked**
+          if (sale.sewing_job_id) {
+            const { data: job } = await supabase
+              .from("sewing_jobs")
+              .select("total_charged, amount_paid")
+              .eq("id", sale.sewing_job_id)
+              .single();
+
+            if (job) {
+              const newJobAmountPaid = Number(job.amount_paid) + paymentForThisSale;
+              const newJobBalance = Number(job.total_charged) - newJobAmountPaid;
+
+              let newStatus = "Pending";
+              if (newJobBalance === 0) {
+                newStatus = "Done";
+              } else if (newJobAmountPaid > 0 && newJobBalance > 0) {
+                newStatus = "Part";
+              }
+
+              await supabase
+                .from("sewing_jobs")
+                .update({
+                  amount_paid: newJobAmountPaid,
+                  status: newStatus,
+                })
+                .eq("id", sale.sewing_job_id);
+            }
+          }
+
+          remainingAmount -= paymentForThisSale;
+        }
+      }
+
+      await fetchReceivables();
+      setCollectDialogOpen(false);
+      setSelectedCustomer(null);
+      toast.success("Payment recorded successfully");
+    } catch (error) {
+      console.error("Unexpected error:", error);
+      toast.error("Failed to record payment");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filteredReceivables = receivables.filter((receivable) =>
@@ -227,8 +280,13 @@ export default function ReceivablesPage() {
   const totalOutstanding = receivables.reduce((sum, r) => sum + r.total_outstanding, 0);
   const overdueCount = receivables.filter((r) => r.days_since_sale > 30).length;
 
+  const handleCardClick = (receivable: Receivable) => {
+    setSelectedDetailCustomer(receivable);
+    setDetailSheetOpen(true);
+  };
+
   return (
-    <div className="flex-1 space-y-6 p-8">
+    <div className="flex-1 space-y-6 p-4 sm:p-8">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Receivables</h2>
@@ -238,39 +296,39 @@ export default function ReceivablesPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border bg-card p-6">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+        <div className="rounded-lg border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
               Total Outstanding
             </h3>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="mt-2 text-2xl font-bold" style={{ color: "#F59E0B" }}>
+          <div className="mt-2 text-xl sm:text-2xl font-bold" style={{ color: "#F59E0B" }}>
             {formatCurrency(totalOutstanding)}
           </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
+        <div className="rounded-lg border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
               Customers with Balance
             </h3>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="mt-2 text-2xl font-bold">
+          <div className="mt-2 text-xl sm:text-2xl font-bold">
             {receivables.length}
           </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
+        <div className="rounded-lg border bg-card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
               Overdue (30+ days)
             </h3>
             <AlertCircle className="h-4 w-4 text-red-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold text-red-600">
+          <div className="mt-2 text-xl sm:text-2xl font-bold text-red-600">
             {overdueCount}
           </div>
         </div>
@@ -281,11 +339,52 @@ export default function ReceivablesPage() {
           placeholder="Search by customer name or phone..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
+          className="w-full sm:max-w-sm"
         />
       </div>
 
-      <div className="rounded-md border">
+      {/* Mobile Card View */}
+      <div className="lg:hidden">
+        {loading ? (
+          <MobileCardSkeleton rows={5} />
+        ) : (
+          <MobileCardView
+            data={filteredReceivables}
+            onCardClick={handleCardClick}
+            emptyMessage="No outstanding balances! 🎉"
+            renderCard={(receivable) => {
+              const isOverdue = receivable.days_since_sale > 30;
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {isOverdue && <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />}
+                      <span className="font-semibold truncate">{receivable.customer_name}</span>
+                    </div>
+                    <Badge variant={isOverdue ? "destructive" : "secondary"}>
+                      {receivable.days_since_sale} days
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Outstanding:</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-bold text-orange-600">{formatCurrency(receivable.total_outstanding)}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {receivable.phone || "No phone"} • Last sale: {formatDate(receivable.last_sale_date)}
+                  </div>
+                </div>
+              );
+            }}
+          />
+        )}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden lg:block rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -344,14 +443,15 @@ export default function ReceivablesPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
+                      <LoadingButton
                         onClick={() => handleCollectPayment(receivable)}
                         size="sm"
                         style={{ backgroundColor: "#72D0CF" }}
+                        loading={false}
                       >
                         <Wallet className="mr-2 h-4 w-4" />
                         Collect Payment
-                      </Button>
+                      </LoadingButton>
                     </TableCell>
                   </TableRow>
                 );
@@ -362,7 +462,7 @@ export default function ReceivablesPage() {
       </div>
 
       <Dialog open={collectDialogOpen} onOpenChange={setCollectDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Collect Payment</DialogTitle>
             <DialogDescription>
@@ -381,14 +481,11 @@ export default function ReceivablesPage() {
 
             <div className="space-y-2">
               <Label htmlFor="collection_date">Date *</Label>
-              <Input
-                id="collection_date"
-                type="date"
-                value={collectionForm.date}
-                onChange={(e) =>
-                  setCollectionForm({ ...collectionForm, date: e.target.value })
+              <DatePicker
+                date={collectionForm.date ? new Date(collectionForm.date) : new Date()}
+                onDateChange={(date) =>
+                  setCollectionForm({ ...collectionForm, date: date ? date.toISOString().split("T")[0] : "" })
                 }
-                required
               />
             </div>
 
@@ -446,21 +543,81 @@ export default function ReceivablesPage() {
               />
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setCollectDialogOpen(false)}
+                disabled={submitting}
+                className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
-              <Button type="submit" style={{ backgroundColor: "#72D0CF" }}>
+              <LoadingButton
+                type="submit"
+                style={{ backgroundColor: "#72D0CF" }}
+                loading={submitting}
+                className="w-full sm:w-auto"
+              >
                 Record Payment
-              </Button>
+              </LoadingButton>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Mobile Detail Sheet */}
+      <DetailSheet
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        title="Customer Balance"
+      >
+        {selectedDetailCustomer && (
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Customer:</span>
+                <span className="font-semibold">{selectedDetailCustomer.customer_name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Phone:</span>
+                <span>{selectedDetailCustomer.phone || "N/A"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Outstanding:</span>
+                <span className="font-bold text-orange-600">
+                  {formatCurrency(selectedDetailCustomer.total_outstanding)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Last Sale:</span>
+                <span>{formatDate(selectedDetailCustomer.last_sale_date)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Days Since:</span>
+                <Badge variant={selectedDetailCustomer.days_since_sale > 30 ? "destructive" : "secondary"}>
+                  {selectedDetailCustomer.days_since_sale} days
+                </Badge>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t">
+              <LoadingButton
+                onClick={() => {
+                  handleCollectPayment(selectedDetailCustomer);
+                  setDetailSheetOpen(false);
+                }}
+                className="w-full"
+                style={{ backgroundColor: "#72D0CF" }}
+                loading={false}
+              >
+                <Wallet className="mr-2 h-4 w-4" />
+                Collect Payment
+              </LoadingButton>
+            </div>
+          </div>
+        )}
+      </DetailSheet>
     </div>
   );
 }

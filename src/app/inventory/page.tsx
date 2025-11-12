@@ -40,6 +40,7 @@ import {
 import { Plus, Pencil, Trash2, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, X } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 
 type SortField = "item_name" | "category" | "quantity_left" | "unit_cost" | "total_cost" | "date";
 type SortDirection = "asc" | "desc";
@@ -523,7 +524,7 @@ export default function InventoryPage() {
       {/* Mobile Card View */}
       <div className="lg:hidden">
         {loading ? (
-          <TableSkeleton columns={1} rows={5} />
+          <MobileCardSkeleton rows={5} />
         ) : (
           <MobileCardView
             data={filteredItems}

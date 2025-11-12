@@ -6,6 +6,11 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { toast } from "sonner";
 import { Customer } from "@/types/database";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { MobileCardView } from "@/components/ui/mobile-card-view";
+import { DetailSheet } from "@/components/ui/detail-sheet";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
@@ -33,9 +38,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, User, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { Plus, Pencil, Trash2, User, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, X } from "lucide-react";
+import { formatDate, formatCurrency } from "@/lib/utils";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 
 type SortField = "name" | "last_order_date" | "total_orders" | "lifetime_value" | "outstanding_balance";
 type SortDirection = "asc" | "desc";
@@ -50,11 +56,16 @@ export default function CustomersPage() {
   const { settings } = useSettings();
   const [customers, setCustomers] = useState<CustomerWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [selectedDetailCustomer, setSelectedDetailCustomer] = useState<CustomerWithStats | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -111,6 +122,7 @@ export default function CustomersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
 
     const data = {
       name: formData.name,
@@ -122,31 +134,37 @@ export default function CustomersPage() {
       size_fit_notes: formData.size_fit_notes || null,
     };
 
-    if (editingCustomer) {
-      const { error } = await supabase
-        .from("customers")
-        .update(data)
-        .eq("id", editingCustomer.id);
+    try {
+      if (editingCustomer) {
+        const { error } = await supabase
+          .from("customers")
+          .update(data)
+          .eq("id", editingCustomer.id);
 
-      if (error) {
-        console.error("Error updating customer:", error);
-        toast.error("Error updating customer");
+        if (error) {
+          console.error("Error updating customer:", error);
+          toast.error("Error updating customer");
+        } else {
+          await fetchCustomers();
+          setDialogOpen(false);
+          resetForm();
+          toast.success("Customer updated successfully");
+        }
       } else {
-        await fetchCustomers();
-        setDialogOpen(false);
-        resetForm();
-      }
-    } else {
-      const { error } = await supabase.from("customers").insert([data]);
+        const { error } = await supabase.from("customers").insert([data]);
 
-      if (error) {
-        console.error("Error adding customer:", error);
-        toast.error("Error adding customer");
-      } else {
-        await fetchCustomers();
-        setDialogOpen(false);
-        resetForm();
+        if (error) {
+          console.error("Error adding customer:", error);
+          toast.error("Error adding customer");
+        } else {
+          await fetchCustomers();
+          setDialogOpen(false);
+          resetForm();
+          toast.success("Customer added successfully");
+        }
       }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -164,17 +182,25 @@ export default function CustomersPage() {
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this customer? This will not delete their orders.")) return;
+  const handleDelete = (id: string) => {
+    setCustomerToDelete(id);
+    setDeleteDialogOpen(true);
+  };
 
-    const { error } = await supabase.from("customers").delete().eq("id", id);
+  const confirmDelete = async () => {
+    if (!customerToDelete) return;
+
+    const { error } = await supabase.from("customers").delete().eq("id", customerToDelete);
 
     if (error) {
       console.error("Error deleting customer:", error);
       toast.error("Error deleting customer");
     } else {
       await fetchCustomers();
+      toast.success("Customer deleted successfully");
     }
+    setDeleteDialogOpen(false);
+    setCustomerToDelete(null);
   };
 
   const handleSort = (field: SortField) => {
@@ -235,8 +261,19 @@ export default function CustomersPage() {
     return daysSinceLastOrder > 60;
   };
 
+  const hasActiveFilters = searchTerm !== "";
+
+  const clearFilters = () => {
+    setSearchTerm("");
+  };
+
+  const handleCardClick = (customer: CustomerWithStats) => {
+    setSelectedDetailCustomer(customer);
+    setDetailSheetOpen(true);
+  };
+
   return (
-    <div className="flex-1 space-y-6 p-8">
+    <div className="flex-1 space-y-6 p-4 sm:p-8">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Customers</h2>
@@ -368,7 +405,7 @@ export default function CustomersPage() {
                 />
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -376,33 +413,91 @@ export default function CustomersPage() {
                     setDialogOpen(false);
                     resetForm();
                   }}
+                  disabled={submitting}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" style={{ backgroundColor: "#72D0CF" }}>
+                <LoadingButton
+                  type="submit"
+                  style={{ backgroundColor: "#72D0CF" }}
+                  loading={submitting}
+                  className="w-full sm:w-auto"
+                >
                   {editingCustomer ? "Update Customer" : "Add Customer"}
-                </Button>
+                </LoadingButton>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1">
           <Input
             placeholder="Search customers by name or phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="w-full"
           />
         </div>
-        <div className="text-sm text-muted-foreground">
+        {hasActiveFilters && (
+          <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
+            <X className="mr-2 h-4 w-4" />
+            Clear Filters
+          </Button>
+        )}
+        <div className="text-sm text-muted-foreground text-center sm:text-left">
           Total Customers: <span className="font-bold">{customers.length}</span>
         </div>
       </div>
 
-      <div className="rounded-md border">
+      {/* Mobile Card View */}
+      <div className="lg:hidden">
+        {loading ? (
+          <MobileCardSkeleton rows={5} />
+        ) : (
+          <MobileCardView
+            data={filteredCustomers}
+            onCardClick={handleCardClick}
+            emptyMessage="No customers found"
+            renderCard={(customer) => {
+              const inactive = isInactive(customer);
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {inactive && <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />}
+                      <span className="font-semibold truncate">{customer.name}</span>
+                    </div>
+                    <Badge variant={inactive ? "destructive" : "secondary"}>
+                      {customer.total_orders || 0} orders
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Lifetime:</span>{" "}
+                      <span className="font-medium">₦{(customer.lifetime_value || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-muted-foreground">Balance:</span>{" "}
+                      <span className={customer.outstanding_balance && customer.outstanding_balance > 0 ? "font-medium text-orange-600" : "font-medium"}>
+                        ₦{(customer.outstanding_balance || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {customer.phone || "No phone"} • Last order: {customer.last_order_date ? formatDate(customer.last_order_date) : "Never"}
+                  </div>
+                </div>
+              );
+            }}
+          />
+        )}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden lg:block rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -513,6 +608,94 @@ export default function CustomersPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={confirmDelete}
+        title="Delete Customer"
+        description="Are you sure you want to delete this customer? This will not delete their orders."
+      />
+
+      {/* Mobile Detail Sheet */}
+      <DetailSheet
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        title="Customer Details"
+      >
+        {selectedDetailCustomer && (
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Name:</span>
+                <Link
+                  href={`/customers/${selectedDetailCustomer.id}`}
+                  className="font-semibold hover:underline"
+                  style={{ color: settings.brand_primary_color }}
+                >
+                  {selectedDetailCustomer.name}
+                </Link>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Phone:</span>
+                <span>{selectedDetailCustomer.phone || "N/A"}</span>
+              </div>
+              {selectedDetailCustomer.address && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Address:</span>
+                  <span className="text-right">{selectedDetailCustomer.address}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Orders:</span>
+                <Badge>{selectedDetailCustomer.total_orders || 0}</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Lifetime Value:</span>
+                <span className="font-bold" style={{ color: settings.brand_primary_color }}>
+                  ₦{(selectedDetailCustomer.lifetime_value || 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Outstanding:</span>
+                <span className={selectedDetailCustomer.outstanding_balance && selectedDetailCustomer.outstanding_balance > 0 ? "font-medium text-orange-600" : "font-medium"}>
+                  ₦{(selectedDetailCustomer.outstanding_balance || 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Last Order:</span>
+                <span>{selectedDetailCustomer.last_order_date ? formatDate(selectedDetailCustomer.last_order_date) : "Never"}</span>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t flex gap-2">
+              <Button
+                onClick={() => {
+                  handleEdit(selectedDetailCustomer);
+                  setDetailSheetOpen(false);
+                }}
+                className="flex-1"
+                variant="outline"
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+              <Button
+                onClick={() => {
+                  handleDelete(selectedDetailCustomer.id);
+                  setDetailSheetOpen(false);
+                }}
+                variant="destructive"
+                className="flex-1"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </DetailSheet>
     </div>
   );
 }

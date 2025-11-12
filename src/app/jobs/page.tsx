@@ -41,6 +41,7 @@ import { Plus, Pencil, Trash2, AlertCircle, CheckCircle2, ArrowUpDown, ArrowUp, 
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type SortField = "date" | "customer_name" | "total_charged" | "amount_paid" | "balance" | "profit" | "status";
@@ -877,7 +878,7 @@ export default function JobsPage() {
       {/* Mobile Card View */}
       <div className="lg:hidden">
         {loading ? (
-          <TableSkeleton columns={1} rows={5} />
+          <MobileCardSkeleton rows={5} />
         ) : (
           <MobileCardView
             data={filteredJobs}

@@ -41,6 +41,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { Receipt, TrendingUp, Plus, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, X } from "lucide-react";
 import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { DateRange } from "react-day-picker";
 
 type SortField = "date" | "customer_name" | "total_amount" | "amount_paid" | "balance";
@@ -661,7 +662,7 @@ export default function SalesPage() {
       {/* Mobile Card View */}
       <div className="lg:hidden">
         {loading ? (
-          <TableSkeleton columns={1} rows={5} />
+          <MobileCardSkeleton rows={5} />
         ) : (
           <MobileCardView
             data={filteredSales}

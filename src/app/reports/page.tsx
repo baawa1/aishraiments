@@ -22,6 +22,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { TrendingUp, DollarSign, Package, BarChart3, PieChart as PieChartIcon, TrendingUpIcon } from "lucide-react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
+import { TableSkeleton } from "@/components/table-skeleton";
 import {
   BarChart,
   Bar,
@@ -236,7 +237,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="flex-1 space-y-6 p-8">
+    <div className="flex-1 space-y-6 p-4 sm:p-8">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Monthly Reports</h2>
@@ -263,7 +264,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -308,7 +309,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Bar Chart: Monthly Total Sales */}
         <Card>
           <CardHeader>
@@ -415,7 +416,7 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -430,11 +431,7 @@ export default function ReportsPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableSkeleton columns={7} rows={5} />
             ) : (
               monthlyData.map((data) => (
                 <TableRow key={data.month}>
