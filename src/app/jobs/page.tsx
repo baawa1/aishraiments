@@ -183,7 +183,7 @@ export default function JobsPage() {
       setFormData({
         ...formData,
         fabric_inventory_id: fabricId,
-        material_cost: fabric.unit_cost.toString(),
+        material_cost: fabric.cost_price.toString(),
       });
     }
   };
@@ -311,9 +311,13 @@ export default function JobsPage() {
               sale_type: "Fabric" as const,
               customer_id: data.customer_id,
               customer_name: data.customer_name,
-              total_amount: fabric.unit_cost,
-              amount_paid: fabric.unit_cost,
+              total_amount: fabric.cost_price,
+              amount_paid: fabric.cost_price,
               notes: `Fabric sale for job: ${data.item_sewn} (${fabric.item_name})`,
+              inventory_item_id: fabric.id,
+              quantity_sold: 1, // Assuming 1 unit per job
+              unit_cost_price: fabric.cost_price,
+              unit_selling_price: fabric.cost_price, // Internal use, no markup
             }]);
 
             // Update inventory quantity_used
@@ -666,7 +670,7 @@ export default function JobsPage() {
                     <SelectContent>
                       {inventoryFabrics.map((fabric) => (
                         <SelectItem key={fabric.id} value={fabric.id}>
-                          {fabric.item_name} - {Number(fabric.quantity_left).toFixed(1)} left - {formatCurrency(fabric.unit_cost)}
+                          {fabric.item_name} - {Number(fabric.quantity_left).toFixed(1)} left - {formatCurrency(fabric.cost_price)}
                         </SelectItem>
                       ))}
                     </SelectContent>

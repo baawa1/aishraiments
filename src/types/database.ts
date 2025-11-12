@@ -33,7 +33,8 @@ export interface InventoryItem {
   category: FabricCategory;
   quantity_bought: number;
   quantity_used: number;
-  unit_cost: number;
+  cost_price: number;
+  selling_price: number | null;
   supplier_notes: string | null;
   reorder_level: number | null;
   location: string | null;
@@ -44,9 +45,10 @@ export interface InventoryItem {
   // Computed fields
   quantity_left: number;
   total_cost: number;
+  profit_margin: number | null;
 }
 
-export interface InventoryItemInsert extends Omit<InventoryItem, 'id' | 'created_at' | 'updated_at' | 'quantity_left' | 'total_cost'> {}
+export interface InventoryItemInsert extends Omit<InventoryItem, 'id' | 'created_at' | 'updated_at' | 'quantity_left' | 'total_cost' | 'profit_margin'> {}
 export interface InventoryItemUpdate extends Partial<InventoryItemInsert> {}
 
 // Sewing Job type
@@ -108,13 +110,18 @@ export interface SalesSummary {
   amount_paid: number;
   notes: string | null;
   sewing_job_id: string | null;
+  inventory_item_id: string | null;
+  quantity_sold: number | null;
+  unit_cost_price: number | null;
+  unit_selling_price: number | null;
   created_at: string;
   updated_at: string;
-  // Computed field
+  // Computed fields
   balance: number;
+  inventory_profit: number | null;
 }
 
-export interface SalesSummaryInsert extends Omit<SalesSummary, 'id' | 'created_at' | 'updated_at' | 'balance'> {}
+export interface SalesSummaryInsert extends Omit<SalesSummary, 'id' | 'created_at' | 'updated_at' | 'balance' | 'inventory_profit'> {}
 export interface SalesSummaryUpdate extends Partial<SalesSummaryInsert> {}
 
 // Collections Log type
@@ -155,6 +162,9 @@ export interface DashboardMetrics {
   materialCost: number;
   profit: number;
   inventoryValue: number;
+  inventorySalesProfit: number;
+  sewingProfit: number;
+  totalBusinessProfit: number;
 }
 
 export interface MonthlyData {

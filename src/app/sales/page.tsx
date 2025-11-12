@@ -183,12 +183,14 @@ export default function SalesPage() {
     const item = inventoryItems.find((i) => i.id === itemId);
     if (item) {
       const quantity = parseFloat(formData.quantity_sold) || 1;
-      const totalCost = item.unit_cost * quantity;
+      // Use selling_price if available, otherwise fallback to cost_price
+      const pricePerUnit = item.selling_price || item.cost_price;
+      const totalAmount = pricePerUnit * quantity;
       setFormData({
         ...formData,
         inventory_item_id: itemId,
-        total_amount: totalCost.toString(),
-        amount_paid: totalCost.toString(), // Default to full payment
+        total_amount: totalAmount.toString(),
+        amount_paid: totalAmount.toString(), // Default to full payment
       });
     }
   };
@@ -198,6 +200,15 @@ export default function SalesPage() {
     setSubmitting(true);
 
     try {
+      // Get inventory item details if selected
+      const selectedItem = formData.inventory_item_id
+        ? inventoryItems.find((i) => i.id === formData.inventory_item_id)
+        : null;
+
+      const quantitySold = parseFloat(formData.quantity_sold) || 0;
+      const sellingPricePerUnit = selectedItem?.selling_price || selectedItem?.cost_price || 0;
+      const costPricePerUnit = selectedItem?.cost_price || 0;
+
       const data = {
         date: formData.date?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0],
         sale_type: formData.sale_type as SaleType,
@@ -207,6 +218,10 @@ export default function SalesPage() {
         amount_paid: parseFloat(formData.amount_paid) || 0,
         notes: formData.notes || null,
         sewing_job_id: null, // Manual sales don't link to jobs
+        inventory_item_id: formData.inventory_item_id || null,
+        quantity_sold: quantitySold > 0 ? quantitySold : null,
+        unit_cost_price: selectedItem ? costPricePerUnit : null,
+        unit_selling_price: selectedItem ? sellingPricePerUnit : null,
       };
 
       if (editingSale) {
@@ -453,7 +468,8 @@ export default function SalesPage() {
                       <SelectContent>
                         {inventoryItems.map((item) => (
                           <SelectItem key={item.id} value={item.id}>
-                            {item.item_name} - {Number(item.quantity_left).toFixed(1)} left - {formatCurrency(item.unit_cost)} each
+                            {item.item_name} - {Number(item.quantity_left).toFixed(1)} left - {formatCurrency(item.selling_price || item.cost_price)}/unit
+                            {item.profit_margin && ` (Profit: ${formatCurrency(item.profit_margin)})`}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -461,25 +477,49 @@ export default function SalesPage() {
                   </div>
 
                   {formData.inventory_item_id && (
-                    <div className="space-y-2">
-                      <Label htmlFor="quantity_sold">Quantity Sold</Label>
-                      <Input
-                        id="quantity_sold"
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        value={formData.quantity_sold}
-                        onChange={(e) => {
-                          const newQuantity = e.target.value;
-                          setFormData({ ...formData, quantity_sold: newQuantity });
-                          // Recalculate total if item is selected
-                          handleInventoryItemSelect(formData.inventory_item_id);
-                        }}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        This will update inventory quantities automatically
-                      </p>
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="quantity_sold">Quantity Sold</Label>
+                        <Input
+                          id="quantity_sold"
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={formData.quantity_sold}
+                          onChange={(e) => {
+                            const newQuantity = e.target.value;
+                            setFormData({ ...formData, quantity_sold: newQuantity });
+                            // Recalculate total if item is selected
+                            handleInventoryItemSelect(formData.inventory_item_id);
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This will update inventory quantities automatically
+                        </p>
+                      </div>
+
+                      {(() => {
+                        const selectedItem = inventoryItems.find((i) => i.id === formData.inventory_item_id);
+                        if (selectedItem && selectedItem.profit_margin) {
+                          const quantity = parseFloat(formData.quantity_sold) || 1;
+                          const totalProfit = selectedItem.profit_margin * quantity;
+                          return (
+                            <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-green-900">Expected Profit:</span>
+                                <span className="text-lg font-bold text-green-700">
+                                  {formatCurrency(totalProfit)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-green-700 mt-1">
+                                {formatCurrency(selectedItem.profit_margin)} per unit × {quantity} units
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </>
                   )}
                 </>
               )}
@@ -704,6 +744,14 @@ export default function SalesPage() {
                       </span>
                     </div>
                   </div>
+                  {sale.inventory_profit && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Profit:</span>{" "}
+                      <span className="font-medium text-green-600">
+                        {formatCurrency(Number(sale.inventory_profit))}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             />
@@ -742,16 +790,17 @@ export default function SalesPage() {
                 <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("balance")}>
                   Balance{getSortIcon("balance")}
                 </TableHead>
+                <TableHead className="text-right">Profit</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableSkeleton columns={8} rows={5} />
+                <TableSkeleton columns={9} rows={5} />
               ) : filteredSales.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">
+                  <TableCell colSpan={9} className="text-center">
                     {sales.length === 0
                       ? "No sales recorded yet. Click 'Record Sale' to add one."
                       : "No sales match your search."}
@@ -775,6 +824,15 @@ export default function SalesPage() {
                       <span className={Number(sale.balance) > 0 ? "text-orange-600 font-medium" : "text-green-600"}>
                         {formatCurrency(Number(sale.balance))}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {sale.inventory_profit ? (
+                        <span className="text-green-600 font-medium">
+                          {formatCurrency(Number(sale.inventory_profit))}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-xs truncate">
                       {sale.notes || "-"}

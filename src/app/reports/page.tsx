@@ -49,6 +49,8 @@ interface MonthlyData {
   materialCost: number;
   expenses: number;
   profit: number;
+  inventoryProfit: number;
+  sewingProfit: number;
 }
 
 interface ExpenseBreakdown {
@@ -132,7 +134,7 @@ export default function ReportsPage() {
       // Get sales for the month
       const { data: salesData } = await supabase
         .from("sales_summary")
-        .select("total_amount, amount_paid, balance")
+        .select("total_amount, amount_paid, balance, inventory_profit")
         .gte("date", startDate)
         .lte("date", endDate);
 
@@ -143,10 +145,10 @@ export default function ReportsPage() {
         .gte("date", startDate)
         .lte("date", endDate);
 
-      // Get material costs for the month
+      // Get material costs and sewing profit for the month
       const { data: jobsData } = await supabase
         .from("sewing_jobs")
-        .select("material_cost")
+        .select("material_cost, profit")
         .gte("date", startDate)
         .lte("date", endDate);
 
@@ -155,7 +157,16 @@ export default function ReportsPage() {
       const outstanding = salesData?.reduce((sum, s) => sum + Number(s.balance), 0) || 0;
       const materialCost = jobsData?.reduce((sum, j) => sum + Number(j.material_cost), 0) || 0;
       const expenses = expensesData?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
-      const profit = amountCollected - materialCost - expenses;
+
+      // Calculate inventory profit from sales
+      const inventoryProfit = salesData?.reduce((sum, s) =>
+        sum + (s.inventory_profit ? Number(s.inventory_profit) : 0), 0) || 0;
+
+      // Calculate sewing profit from jobs
+      const sewingProfit = jobsData?.reduce((sum, j) => sum + Number(j.profit), 0) || 0;
+
+      // Total profit is combination of sewing profit and inventory profit
+      const profit = sewingProfit + inventoryProfit;
 
       data.push({
         month: monthKey,
@@ -165,6 +176,8 @@ export default function ReportsPage() {
         materialCost,
         expenses,
         profit,
+        inventoryProfit,
+        sewingProfit,
       });
     }
 
@@ -199,6 +212,8 @@ export default function ReportsPage() {
       materialCost: acc.materialCost + month.materialCost,
       expenses: acc.expenses + month.expenses,
       profit: acc.profit + month.profit,
+      inventoryProfit: acc.inventoryProfit + month.inventoryProfit,
+      sewingProfit: acc.sewingProfit + month.sewingProfit,
     }),
     {
       totalSales: 0,
@@ -207,6 +222,8 @@ export default function ReportsPage() {
       materialCost: 0,
       expenses: 0,
       profit: 0,
+      inventoryProfit: 0,
+      sewingProfit: 0,
     }
   );
 
@@ -227,6 +244,8 @@ export default function ReportsPage() {
     month: format(new Date(data.month + "-01"), "MMM"),
     sales: data.totalSales,
     profit: data.profit,
+    sewingProfit: data.sewingProfit,
+    inventoryProfit: data.inventoryProfit,
     expenses: data.expenses + data.materialCost,
   }));
 
@@ -441,12 +460,14 @@ export default function ReportsPage() {
               <TableHead className="text-right">Outstanding</TableHead>
               <TableHead className="text-right">Material Cost</TableHead>
               <TableHead className="text-right">Expenses</TableHead>
-              <TableHead className="text-right">Profit</TableHead>
+              <TableHead className="text-right">Sewing Profit</TableHead>
+              <TableHead className="text-right">Inventory Profit</TableHead>
+              <TableHead className="text-right">Total Profit</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableSkeleton columns={7} rows={5} />
+              <TableSkeleton columns={9} rows={5} />
             ) : (
               currentItems.map((data) => (
                 <TableRow key={data.month}>
@@ -467,6 +488,28 @@ export default function ReportsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     {formatCurrency(data.expenses)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span
+                      className={
+                        data.sewingProfit >= 0
+                          ? "text-green-600 font-medium"
+                          : "text-red-600 font-medium"
+                      }
+                    >
+                      {formatCurrency(data.sewingProfit)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span
+                      className={
+                        data.inventoryProfit >= 0
+                          ? "text-green-600 font-medium"
+                          : "text-red-600 font-medium"
+                      }
+                    >
+                      {formatCurrency(data.inventoryProfit)}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right">
                     <span
@@ -498,6 +541,28 @@ export default function ReportsPage() {
               </TableCell>
               <TableCell className="text-right">
                 {formatCurrency(yearTotals.expenses)}
+              </TableCell>
+              <TableCell className="text-right">
+                <span
+                  className={
+                    yearTotals.sewingProfit >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }
+                >
+                  {formatCurrency(yearTotals.sewingProfit)}
+                </span>
+              </TableCell>
+              <TableCell className="text-right">
+                <span
+                  className={
+                    yearTotals.inventoryProfit >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }
+                >
+                  {formatCurrency(yearTotals.inventoryProfit)}
+                </span>
               </TableCell>
               <TableCell className="text-right">
                 <span

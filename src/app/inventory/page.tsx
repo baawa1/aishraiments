@@ -44,7 +44,7 @@ import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/table-pagination";
 
-type SortField = "item_name" | "category" | "quantity_left" | "unit_cost" | "total_cost" | "date";
+type SortField = "item_name" | "category" | "quantity_left" | "cost_price" | "selling_price" | "profit_margin" | "total_cost" | "date";
 type SortDirection = "asc" | "desc";
 
 const categories: FabricCategory[] = [
@@ -78,7 +78,8 @@ export default function InventoryPage() {
     category: FabricCategory;
     quantity_bought: string;
     quantity_used: string;
-    unit_cost: string;
+    cost_price: string;
+    selling_price: string;
     supplier_notes: string;
     reorder_level: string;
     location: string;
@@ -89,7 +90,8 @@ export default function InventoryPage() {
     category: "Fabric",
     quantity_bought: "",
     quantity_used: "",
-    unit_cost: "",
+    cost_price: "",
+    selling_price: "",
     supplier_notes: "",
     reorder_level: "",
     location: "",
@@ -124,7 +126,8 @@ export default function InventoryPage() {
       category: "Fabric",
       quantity_bought: "",
       quantity_used: "",
-      unit_cost: "",
+      cost_price: "",
+      selling_price: "",
       supplier_notes: "",
       reorder_level: "",
       location: "",
@@ -143,7 +146,8 @@ export default function InventoryPage() {
       category: formData.category,
       quantity_bought: parseFloat(formData.quantity_bought) || 0,
       quantity_used: parseFloat(formData.quantity_used) || 0,
-      unit_cost: parseFloat(formData.unit_cost) || 0,
+      cost_price: parseFloat(formData.cost_price) || 0,
+      selling_price: formData.selling_price ? parseFloat(formData.selling_price) : null,
       supplier_notes: formData.supplier_notes || null,
       reorder_level: formData.reorder_level ? parseFloat(formData.reorder_level) : null,
       location: formData.location || null,
@@ -189,7 +193,8 @@ export default function InventoryPage() {
       category: item.category,
       quantity_bought: item.quantity_bought.toString(),
       quantity_used: item.quantity_used.toString(),
-      unit_cost: item.unit_cost.toString(),
+      cost_price: item.cost_price.toString(),
+      selling_price: item.selling_price?.toString() || "",
       supplier_notes: item.supplier_notes || "",
       reorder_level: item.reorder_level?.toString() || "",
       location: item.location || "",
@@ -266,7 +271,7 @@ export default function InventoryPage() {
       if (bValue == null) bValue = "";
 
       // Convert to numbers for numeric fields
-      if (["quantity_left", "unit_cost", "total_cost"].includes(sortField)) {
+      if (["quantity_left", "cost_price", "selling_price", "profit_margin", "total_cost"].includes(sortField)) {
         aValue = Number(aValue);
         bValue = Number(bValue);
       }
@@ -406,18 +411,32 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="unit_cost">Unit Cost (₦)</Label>
+                  <Label htmlFor="cost_price">Cost Price (₦)</Label>
                   <Input
-                    id="unit_cost"
+                    id="cost_price"
                     type="number"
                     step="0.01"
-                    value={formData.unit_cost}
+                    value={formData.cost_price}
                     onChange={(e) =>
-                      setFormData({ ...formData, unit_cost: e.target.value })
+                      setFormData({ ...formData, cost_price: e.target.value })
                     }
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="selling_price">Selling Price (₦) - Optional</Label>
+                <Input
+                  id="selling_price"
+                  type="number"
+                  step="0.01"
+                  value={formData.selling_price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, selling_price: e.target.value })
+                  }
+                  placeholder="Leave empty if not for resale"
+                />
               </div>
 
               <div className="grid sm:grid-cols-2 gap-4">
@@ -602,8 +621,14 @@ export default function InventoryPage() {
                 <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("quantity_left")}>
                   Left{getSortIcon("quantity_left")}
                 </TableHead>
-                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("unit_cost")}>
-                  Unit Cost{getSortIcon("unit_cost")}
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("cost_price")}>
+                  Cost Price{getSortIcon("cost_price")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("selling_price")}>
+                  Selling Price{getSortIcon("selling_price")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("profit_margin")}>
+                  Margin{getSortIcon("profit_margin")}
                 </TableHead>
                 <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_cost")}>
                   Total Cost{getSortIcon("total_cost")}
@@ -614,10 +639,10 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableSkeleton columns={9} rows={5} />
+                <TableSkeleton columns={11} rows={5} />
               ) : filteredItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center">
+                  <TableCell colSpan={11} className="text-center">
                     No items found
                   </TableCell>
                 </TableRow>
@@ -649,7 +674,17 @@ export default function InventoryPage() {
                       {Number(item.quantity_left).toFixed(1)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(Number(item.unit_cost))}
+                      {formatCurrency(Number(item.cost_price))}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {item.selling_price ? formatCurrency(Number(item.selling_price)) : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {item.profit_margin ? (
+                        <span className={item.profit_margin > 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+                          {formatCurrency(Number(item.profit_margin))}
+                        </span>
+                      ) : "-"}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(Number(item.total_cost))}
@@ -740,13 +775,29 @@ export default function InventoryPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-sm text-muted-foreground">Unit Cost</div>
-                  <div className="font-medium">{formatCurrency(Number(selectedItem.unit_cost))}</div>
+                  <div className="text-sm text-muted-foreground">Cost Price</div>
+                  <div className="font-medium">{formatCurrency(Number(selectedItem.cost_price))}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-muted-foreground">Total Cost</div>
-                  <div className="font-semibold text-lg">{formatCurrency(Number(selectedItem.total_cost))}</div>
+                  <div className="text-sm text-muted-foreground">Selling Price</div>
+                  <div className="font-medium">
+                    {selectedItem.selling_price ? formatCurrency(Number(selectedItem.selling_price)) : "Not set"}
+                  </div>
                 </div>
+              </div>
+
+              {selectedItem.profit_margin && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Profit Margin (per unit)</div>
+                  <div className={`font-semibold text-lg ${selectedItem.profit_margin > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(Number(selectedItem.profit_margin))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="text-sm text-muted-foreground">Total Cost (Remaining Stock)</div>
+                <div className="font-semibold text-lg">{formatCurrency(Number(selectedItem.total_cost))}</div>
               </div>
 
               {(selectedItem.location || selectedItem.preferred_supplier) && (

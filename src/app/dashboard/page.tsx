@@ -28,9 +28,9 @@ async function getDashboardMetrics(): Promise<DashboardMetrics> {
     { data: jobsData },
     { data: inventoryData },
   ] = await Promise.all([
-    supabase.from("sales_summary").select("total_amount, amount_paid, balance"),
+    supabase.from("sales_summary").select("total_amount, amount_paid, balance, inventory_profit"),
     supabase.from("expenses").select("amount"),
-    supabase.from("sewing_jobs").select("material_cost, amount_paid"),
+    supabase.from("sewing_jobs").select("material_cost, amount_paid, profit"),
     supabase.from("inventory").select("total_cost"),
   ]);
 
@@ -41,6 +41,18 @@ async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const totalExpenses = expensesData?.reduce((sum, expense) => sum + Number(expense.amount), 0) || 0;
   const materialCost = jobsData?.reduce((sum, job) => sum + Number(job.material_cost), 0) || 0;
   const inventoryValue = inventoryData?.reduce((sum, item) => sum + Number(item.total_cost), 0) || 0;
+
+  // Calculate inventory sales profit (from inventory sales)
+  const inventorySalesProfit = salesData?.reduce((sum, sale) =>
+    sum + (sale.inventory_profit ? Number(sale.inventory_profit) : 0), 0) || 0;
+
+  // Calculate sewing profit (from sewing jobs)
+  const sewingProfit = jobsData?.reduce((sum, job) => sum + Number(job.profit), 0) || 0;
+
+  // Total business profit (sewing + inventory sales)
+  const totalBusinessProfit = sewingProfit + inventorySalesProfit;
+
+  // Legacy profit calculation (for backward compatibility)
   const profit = amountCollected - totalExpenses - materialCost;
 
   return {
@@ -51,6 +63,9 @@ async function getDashboardMetrics(): Promise<DashboardMetrics> {
     materialCost,
     profit,
     inventoryValue,
+    inventorySalesProfit,
+    sewingProfit,
+    totalBusinessProfit,
   };
 }
 
@@ -113,15 +128,29 @@ export default async function DashboardPage() {
           description="Pending payments"
         />
         <MetricCard
-          title="Profit"
-          value={metrics.profit}
+          title="Total Profit"
+          value={metrics.totalBusinessProfit}
           icon={TrendingUp}
-          colorVariant={metrics.profit >= 0 ? "success" : "error"}
-          description="Revenue minus costs"
+          colorVariant={metrics.totalBusinessProfit >= 0 ? "success" : "error"}
+          description="Combined profit"
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <MetricCard
+          title="Sewing Profit"
+          value={metrics.sewingProfit}
+          icon={TrendingUp}
+          colorVariant={metrics.sewingProfit >= 0 ? "success" : "error"}
+          description="From sewing jobs"
+        />
+        <MetricCard
+          title="Inventory Profit"
+          value={metrics.inventorySalesProfit}
+          icon={TrendingUp}
+          colorVariant={metrics.inventorySalesProfit >= 0 ? "success" : "error"}
+          description="From inventory sales"
+        />
         <MetricCard
           title="Total Expenses"
           value={metrics.totalExpenses}
