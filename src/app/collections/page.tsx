@@ -5,10 +5,19 @@ import { createClient } from "@/lib/supabase/client";
 import { CollectionLog, PaymentMethod } from "@/types/database";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { MobileCardView } from "@/components/ui/mobile-card-view";
 import { DetailSheet } from "@/components/ui/detail-sheet";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -25,12 +34,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Wallet, TrendingUp, Calendar, X } from "lucide-react";
+import { Wallet, TrendingUp, Calendar, X, Pencil, Trash2 } from "lucide-react";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { DateRange } from "react-day-picker";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/table-pagination";
+import { toast } from "sonner";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Label } from "@/components/ui/label";
 
 const paymentMethods: PaymentMethod[] = ["Transfer", "Cash", "POS", "Other"];
 
@@ -42,11 +55,24 @@ export default function CollectionsPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<CollectionLog | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingCollection, setEditingCollection] = useState<CollectionLog | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [editForm, setEditForm] = useState({
+    date: "",
+    amount: "",
+    payment_method: "Transfer" as PaymentMethod,
+    notes: "",
+  });
 
   const supabase = createClient();
 
   const fetchCollections = useCallback(async () => {
     setLoading(true);
+    const supabase = createClient();
 
     let query = supabase
       .from("collections_log")
@@ -65,11 +91,12 @@ export default function CollectionsPage() {
 
     if (error) {
       console.error("Error fetching collections:", error);
+      toast.error("Failed to load collections");
     } else {
       setCollections(data || []);
     }
     setLoading(false);
-  }, [supabase, dateRange]);
+  }, [dateRange]);
 
   useEffect(() => {
     fetchCollections();
@@ -119,6 +146,95 @@ export default function CollectionsPage() {
   const handleCardClick = (collection: CollectionLog) => {
     setSelectedCollection(collection);
     setDetailSheetOpen(true);
+  };
+
+  const handleEdit = (collection: CollectionLog) => {
+    setEditingCollection(collection);
+    setEditForm({
+      date: collection.date,
+      amount: collection.amount.toString(),
+      payment_method: collection.payment_method,
+      notes: collection.notes || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleSubmitEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+
+    if (!editingCollection) {
+      setSubmitting(false);
+      return;
+    }
+
+    const amount = parseFloat(editForm.amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount greater than zero");
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("collections_log")
+        .update({
+          date: editForm.date,
+          amount: amount,
+          payment_method: editForm.payment_method,
+          notes: editForm.notes || null,
+        })
+        .eq("id", editingCollection.id);
+
+      if (error) {
+        console.error("Error updating collection:", error);
+        toast.error("Failed to update collection");
+      } else {
+        toast.success("Collection updated successfully");
+        await fetchCollections();
+        setEditDialogOpen(false);
+        setEditingCollection(null);
+      }
+    } catch (error) {
+      console.error("Unexpected error:", error);
+      toast.error("Failed to update collection");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteClick = (id: string) => {
+    setDeletingId(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingId) return;
+
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("collections_log")
+        .delete()
+        .eq("id", deletingId);
+
+      if (error) {
+        console.error("Error deleting collection:", error);
+        toast.error("Failed to delete collection");
+      } else {
+        toast.success("Collection deleted successfully");
+        await fetchCollections();
+      }
+    } catch (error) {
+      console.error("Unexpected error:", error);
+      toast.error("Failed to delete collection");
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -187,6 +303,7 @@ export default function CollectionsPage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full"
+            aria-label="Search collections by customer name"
           />
         </div>
         <Select value={methodFilter} onValueChange={setMethodFilter}>
@@ -285,14 +402,15 @@ export default function CollectionsPage() {
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead>Payment Method</TableHead>
                 <TableHead>Notes</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableSkeleton columns={5} rows={5} />
+                <TableSkeleton columns={6} rows={5} />
               ) : filteredCollections.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
+                  <TableCell colSpan={6} className="text-center">
                     {collections.length === 0
                       ? "No payment collections recorded yet."
                       : "No collections match your filters."}
@@ -325,6 +443,27 @@ export default function CollectionsPage() {
                   </TableCell>
                   <TableCell className="max-w-xs truncate">
                     {collection.notes || "-"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(collection)}
+                        aria-label="Edit collection"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteClick(collection.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        aria-label="Delete collection"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -401,9 +540,136 @@ export default function CollectionsPage() {
                 </div>
               )}
             </div>
+
+            <div className="pt-4 border-t flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  handleEdit(selectedCollection);
+                  setDetailSheetOpen(false);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={() => {
+                  handleDeleteClick(selectedCollection.id);
+                  setDetailSheetOpen(false);
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </div>
           </div>
         )}
       </DetailSheet>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Collection</DialogTitle>
+            <DialogDescription>
+              Update payment collection record for {editingCollection?.customer_name}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmitEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit_date">Date *</Label>
+              <DatePicker
+                date={editForm.date ? new Date(editForm.date) : new Date()}
+                onDateChange={(date) =>
+                  setEditForm({ ...editForm, date: date ? date.toISOString().split("T")[0] : "" })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit_amount">Amount (₦) *</Label>
+              <Input
+                id="edit_amount"
+                type="number"
+                step="0.01"
+                value={editForm.amount}
+                onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                required
+                aria-label="Collection amount"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit_payment_method">Payment Method *</Label>
+              <Select
+                value={editForm.payment_method}
+                onValueChange={(value) =>
+                  setEditForm({ ...editForm, payment_method: value as PaymentMethod })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentMethods.map((method) => (
+                    <SelectItem key={method} value={method}>
+                      {method}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit_notes">Notes</Label>
+              <textarea
+                id="edit_notes"
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                placeholder="Payment reference or notes..."
+                className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Collection notes"
+              />
+            </div>
+
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditDialogOpen(false)}
+                disabled={submitting}
+                className="w-full sm:w-auto"
+              >
+                Cancel
+              </Button>
+              <LoadingButton
+                type="submit"
+                style={{ backgroundColor: "#72D0CF" }}
+                loading={submitting}
+                className="w-full sm:w-auto"
+              >
+                Save Changes
+              </LoadingButton>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleConfirmDelete}
+        title="Delete Collection"
+        description="Are you sure you want to delete this collection record? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        loading={deleting}
+        variant="destructive"
+      />
     </div>
   );
 }

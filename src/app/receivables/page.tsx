@@ -72,10 +72,9 @@ export default function ReceivablesPage() {
   });
   const [validationError, setValidationError] = useState("");
 
-  const supabase = createClient();
-
   const fetchReceivables = useCallback(async () => {
     setLoading(true);
+    const supabase = createClient();
 
     const { data: salesData } = await supabase
       .from("sales_summary")
@@ -114,32 +113,41 @@ export default function ReceivablesPage() {
     // Fetch phone numbers for customers
     const receivablesArray = Array.from(customerMap.values());
 
-    for (const receivable of receivablesArray) {
-      if (receivable.customer_id) {
-        const { data: customerData } = await supabase
-          .from("customers")
-          .select("phone")
-          .eq("id", receivable.customer_id)
-          .single();
+    // Optimize: Batch fetch phone numbers instead of N+1 queries
+    const customerIds = receivablesArray
+      .map(r => r.customer_id)
+      .filter((id): id is string => id !== null);
 
-        if (customerData) {
-          receivable.phone = customerData.phone;
-        }
+    if (customerIds.length > 0) {
+      const { data: customersData } = await supabase
+        .from("customers")
+        .select("id, phone")
+        .in("id", customerIds);
+
+      if (customersData) {
+        const phoneMap = new Map(customersData.map(c => [c.id, c.phone]));
+        receivablesArray.forEach(r => {
+          if (r.customer_id && phoneMap.has(r.customer_id)) {
+            r.phone = phoneMap.get(r.customer_id) || null;
+          }
+        });
       }
+    }
 
-      // Calculate days since last sale
+    // Calculate days since last sale
+    receivablesArray.forEach(receivable => {
       receivable.days_since_sale = Math.floor(
         (new Date().getTime() - new Date(receivable.last_sale_date).getTime()) /
           (1000 * 60 * 60 * 24)
       );
-    }
+    });
 
     // Sort by amount owed (descending)
     receivablesArray.sort((a, b) => b.total_outstanding - a.total_outstanding);
 
     setReceivables(receivablesArray);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchReceivables();
@@ -185,6 +193,8 @@ export default function ReceivablesPage() {
     }
 
     try {
+      const supabase = createClient();
+
       // Record in collections log
       const { error: collectionError } = await supabase
         .from("collections_log")
@@ -354,6 +364,7 @@ export default function ReceivablesPage() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full sm:max-w-sm"
+          aria-label="Search receivables by customer name or phone"
         />
       </div>
 
