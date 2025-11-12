@@ -76,26 +76,27 @@ export function Navigation() {
       <div
         className={`
           fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50
-          flex h-screen flex-col border-r bg-white lg:bg-gray-50/40 w-64
+          flex h-screen max-h-screen flex-col border-r bg-white lg:bg-gray-50/40 w-64
           transform transition-transform duration-300 ease-in-out
           ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
-        <div className="flex h-20 items-center justify-between border-b px-4">
-        <Link href="/dashboard" className="flex items-center gap-3" onClick={closeMobileMenu}>
-          <Image
-            src="/logo.png"
-            alt={settings.business_name}
-            width={50}
-            height={50}
-            className="rounded-full"
-            style={{ width: "auto", height: "auto" }}
-          />
-          <div className="flex flex-col">
-            <span className="text-lg font-bold" style={{ color: settings.brand_primary_color }}>
+        <div className="flex h-20 items-center justify-between border-b px-3 lg:px-4">
+        <Link href="/dashboard" className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1" onClick={closeMobileMenu}>
+          <div className="flex-shrink-0">
+            <Image
+              src="/logo.png"
+              alt={settings.business_name}
+              width={40}
+              height={40}
+              className="rounded-full w-[40px] h-[40px] lg:w-[50px] lg:h-[50px]"
+            />
+          </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="text-base lg:text-lg font-bold truncate" style={{ color: settings.brand_primary_color }}>
               {settings.business_name}
             </span>
-            <span className="text-xs" style={{ color: settings.brand_accent_color }}>
+            <span className="text-[10px] lg:text-xs truncate" style={{ color: settings.brand_accent_color }}>
               {settings.business_motto}
             </span>
           </div>
@@ -104,44 +105,46 @@ export function Navigation() {
         {/* Close button for mobile */}
         <button
           onClick={closeMobileMenu}
-          className="lg:hidden p-2 rounded-md hover:bg-gray-100"
+          className="lg:hidden p-1.5 rounded-md hover:bg-gray-100 flex-shrink-0"
           aria-label="Close menu"
         >
           <X className="h-5 w-5 text-gray-700" />
         </button>
         </div>
-        <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+        <div className="flex-1 flex flex-col min-h-0">
+          <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={closeMobileMenu}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "text-white"
-                  : "text-gray-700 hover:bg-gray-100"
-              }`}
-              style={isActive ? { backgroundColor: settings.brand_primary_color } : {}}
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={closeMobileMenu}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "text-white"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                  style={isActive ? { backgroundColor: settings.brand_primary_color } : {}}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t p-4 flex-shrink-0">
+            <Button
+              onClick={handleLogout}
+              variant="ghost"
+              className="w-full justify-start text-gray-700 hover:bg-gray-100"
             >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
-        </nav>
-        <div className="border-t p-4">
-          <Button
-            onClick={handleLogout}
-            variant="ghost"
-            className="w-full justify-start text-gray-700 hover:bg-gray-100"
-          >
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </div>
       </div>
     </>
