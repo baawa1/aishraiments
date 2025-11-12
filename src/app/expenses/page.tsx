@@ -90,7 +90,7 @@ export default function ExpensesPage() {
     vendor_payee: "",
     payment_method: "Cash",
     is_fixed: false,
-    job_link: "",
+    job_link: "none",
   });
 
   const supabase = createClient();
@@ -144,7 +144,7 @@ export default function ExpensesPage() {
       vendor_payee: "",
       payment_method: "Cash",
       is_fixed: false,
-      job_link: "",
+      job_link: "none",
     });
     setEditingExpense(null);
   };
@@ -161,7 +161,7 @@ export default function ExpensesPage() {
       vendor_payee: formData.vendor_payee || null,
       payment_method: formData.payment_method || null,
       is_fixed: formData.is_fixed,
-      job_link: formData.job_link || null,
+      job_link: formData.job_link === "none" ? null : formData.job_link,
     };
 
     try {
@@ -200,7 +200,7 @@ export default function ExpensesPage() {
       vendor_payee: expense.vendor_payee || "",
       payment_method: expense.payment_method || "",
       is_fixed: expense.is_fixed,
-      job_link: expense.job_link || "",
+      job_link: expense.job_link || "none",
     });
     setDialogOpen(true);
   };
@@ -405,7 +405,7 @@ export default function ExpensesPage() {
                     <SelectValue placeholder="Select job if expense is job-specific" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No job link</SelectItem>
+                    <SelectItem value="none">No job link</SelectItem>
                     {jobs.map((job) => (
                       <SelectItem key={job.id} value={job.id}>
                         {job.customer_name} - {job.item_sewn}
@@ -535,23 +535,23 @@ export default function ExpensesPage() {
               emptyMessage="No expenses found"
               renderCard={(expense) => (
                 <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate">{expense.description || expense.expense_type}</div>
+                      <div className="font-semibold break-words">{expense.description || expense.expense_type}</div>
                       {expense.vendor_payee && (
-                        <div className="text-sm text-muted-foreground truncate">{expense.vendor_payee}</div>
+                        <div className="text-sm text-muted-foreground break-words">{expense.vendor_payee}</div>
                       )}
                     </div>
-                    <div className="text-right">
-                      <div className="font-bold">{formatCurrency(Number(expense.amount))}</div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="font-bold whitespace-nowrap">{formatCurrency(Number(expense.amount))}</div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <Badge variant="secondary">{expense.expense_type}</Badge>
                       {expense.is_fixed && <RefreshCcw className="h-3 w-3 text-blue-500" />}
                     </div>
-                    <span className="text-xs text-muted-foreground">{formatDate(expense.date)}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(expense.date)}</span>
                   </div>
                 </div>
               )}
