@@ -736,103 +736,117 @@ export default function InventoryPage() {
       >
         {selectedItem && (
           <div className="space-y-6">
-            <div className="space-y-4">
+            {/* Item Name Section */}
+            <div className="space-y-3">
               <div>
-                <div className="text-sm text-muted-foreground">Item Name</div>
-                <div className="text-lg font-semibold flex items-center gap-2">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Item Name</div>
+                <div className="text-xl font-bold flex items-center gap-2">
                   {selectedItem.reorder_level && selectedItem.quantity_left <= selectedItem.reorder_level && (
-                    <AlertCircle className="h-5 w-5 text-orange-500" />
+                    <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
                   )}
                   {selectedItem.item_name}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm text-muted-foreground">Category</div>
-                  <Badge variant="secondary" className="mt-1">{selectedItem.category}</Badge>
+                  <div className="text-xs text-muted-foreground mb-1">Category</div>
+                  <Badge variant="secondary">{selectedItem.category}</Badge>
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Date</div>
-                  <div className="font-medium">{formatDate(selectedItem.date)}</div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground mb-1">Date</div>
+                  <div className="font-semibold">{formatDate(selectedItem.date)}</div>
                 </div>
               </div>
+            </div>
 
+            {/* Stock Levels Section */}
+            <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Stock Levels</div>
               <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Bought</div>
-                  <div className="font-medium">{Number(selectedItem.quantity_bought).toFixed(1)}</div>
+                <div className="text-center">
+                  <div className="text-xs text-muted-foreground mb-1">Bought</div>
+                  <div className="text-2xl font-bold">{Number(selectedItem.quantity_bought).toFixed(1)}</div>
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Used</div>
-                  <div className="font-medium">{Number(selectedItem.quantity_used).toFixed(1)}</div>
+                <div className="text-center border-x">
+                  <div className="text-xs text-muted-foreground mb-1">Used</div>
+                  <div className="text-2xl font-bold">{Number(selectedItem.quantity_used).toFixed(1)}</div>
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Left</div>
-                  <div className="font-semibold text-lg">{Number(selectedItem.quantity_left).toFixed(1)}</div>
+                <div className="text-center">
+                  <div className="text-xs text-muted-foreground mb-1">Left</div>
+                  <div className="text-2xl font-bold" style={{ color: "#72D0CF" }}>{Number(selectedItem.quantity_left).toFixed(1)}</div>
                 </div>
               </div>
+            </div>
 
+            {/* Pricing Section */}
+            <div className="space-y-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Pricing</div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Cost Price</div>
-                  <div className="font-medium">{formatCurrency(Number(selectedItem.cost_price))}</div>
+                <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Cost Price</div>
+                  <div className="text-lg font-bold">{formatCurrency(Number(selectedItem.cost_price))}</div>
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Selling Price</div>
-                  <div className="font-medium">
-                    {selectedItem.selling_price ? formatCurrency(Number(selectedItem.selling_price)) : "Not set"}
+                <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Selling Price</div>
+                  <div className="text-lg font-bold">
+                    {selectedItem.selling_price ? formatCurrency(Number(selectedItem.selling_price)) : "—"}
                   </div>
                 </div>
               </div>
 
               {selectedItem.profit_margin && (
-                <div>
-                  <div className="text-sm text-muted-foreground">Profit Margin (per unit)</div>
-                  <div className={`font-semibold text-lg ${selectedItem.profit_margin > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`rounded-lg p-4 ${selectedItem.profit_margin > 0 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+                  <div className="text-xs text-muted-foreground mb-1">Profit Margin (per unit)</div>
+                  <div className={`text-2xl font-bold ${selectedItem.profit_margin > 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'}`}>
                     {formatCurrency(Number(selectedItem.profit_margin))}
                   </div>
                 </div>
               )}
 
-              <div>
-                <div className="text-sm text-muted-foreground">Total Cost (Remaining Stock)</div>
-                <div className="font-semibold text-lg">{formatCurrency(Number(selectedItem.total_cost))}</div>
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                <div className="text-xs text-muted-foreground mb-1">Total Cost (Remaining Stock)</div>
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-500">{formatCurrency(Number(selectedItem.total_cost))}</div>
               </div>
+            </div>
 
-              {(selectedItem.location || selectedItem.preferred_supplier) && (
+            {/* Location & Supplier Section */}
+            {(selectedItem.location || selectedItem.preferred_supplier) && (
+              <div className="space-y-3 pt-3 border-t">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Details</div>
                 <div className="grid grid-cols-2 gap-4">
                   {selectedItem.location && (
                     <div>
-                      <div className="text-sm text-muted-foreground">Location</div>
-                      <div className="font-medium">{selectedItem.location}</div>
+                      <div className="text-xs text-muted-foreground mb-1">Location</div>
+                      <div className="font-semibold">{selectedItem.location}</div>
                     </div>
                   )}
                   {selectedItem.preferred_supplier && (
                     <div>
-                      <div className="text-sm text-muted-foreground">Supplier</div>
-                      <div className="font-medium">{selectedItem.preferred_supplier}</div>
+                      <div className="text-xs text-muted-foreground mb-1">Supplier</div>
+                      <div className="font-semibold">{selectedItem.preferred_supplier}</div>
                     </div>
                   )}
                 </div>
-              )}
+              </div>
+            )}
 
-              {selectedItem.reorder_level && (
-                <div>
-                  <div className="text-sm text-muted-foreground">Reorder Level</div>
-                  <div className="font-medium">{selectedItem.reorder_level}</div>
-                </div>
-              )}
+            {selectedItem.reorder_level && (
+              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">Reorder Level</div>
+                <div className="font-semibold text-orange-600 dark:text-orange-500">{selectedItem.reorder_level}</div>
+              </div>
+            )}
 
-              {selectedItem.supplier_notes && (
-                <div>
-                  <div className="text-sm text-muted-foreground">Notes</div>
-                  <div className="text-sm">{selectedItem.supplier_notes}</div>
-                </div>
-              )}
-            </div>
+            {selectedItem.supplier_notes && (
+              <div className="space-y-2 pt-3 border-t">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Notes</div>
+                <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded-lg p-3">{selectedItem.supplier_notes}</div>
+              </div>
+            )}
 
-            <div className="flex gap-2">
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-3 border-t">
               <Button
                 variant="outline"
                 className="flex-1"
