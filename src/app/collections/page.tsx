@@ -29,6 +29,8 @@ import { Wallet, TrendingUp, Calendar, X } from "lucide-react";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { DateRange } from "react-day-picker";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 const paymentMethods: PaymentMethod[] = ["Transfer", "Cash", "POS", "Other"];
 
@@ -101,6 +103,18 @@ export default function CollectionsPage() {
     setMethodFilter("all");
     setDateRange(undefined);
   };
+
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(filteredCollections, { initialItemsPerPage: 10 });
 
   const handleCardClick = (collection: CollectionLog) => {
     setSelectedCollection(collection);
@@ -208,72 +222,84 @@ export default function CollectionsPage() {
         {loading ? (
           <MobileCardSkeleton rows={5} />
         ) : (
-          <MobileCardView
-            data={filteredCollections}
-            onCardClick={handleCardClick}
-            emptyMessage={collections.length === 0 ? "No payment collections recorded yet." : "No collections match your filters."}
-            renderCard={(collection) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-semibold truncate">{collection.customer_name}</span>
-                  <Badge
-                    variant="secondary"
-                    className={
-                      collection.payment_method === "Transfer"
-                        ? "bg-blue-100 text-blue-700"
-                        : collection.payment_method === "Cash"
-                        ? "bg-green-100 text-green-700"
-                        : collection.payment_method === "POS"
-                        ? "bg-purple-100 text-purple-700"
-                        : "bg-gray-100 text-gray-700"
-                    }
-                  >
-                    {collection.payment_method}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Amount:</span>
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage={collections.length === 0 ? "No payment collections recorded yet." : "No collections match your filters."}
+              renderCard={(collection) => (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-semibold truncate">{collection.customer_name}</span>
+                    <Badge
+                      variant="secondary"
+                      className={
+                        collection.payment_method === "Transfer"
+                          ? "bg-blue-100 text-blue-700"
+                          : collection.payment_method === "Cash"
+                          ? "bg-green-100 text-green-700"
+                          : collection.payment_method === "POS"
+                          ? "bg-purple-100 text-purple-700"
+                          : "bg-gray-100 text-gray-700"
+                      }
+                    >
+                      {collection.payment_method}
+                    </Badge>
                   </div>
-                  <div className="text-right">
-                    <span className="font-bold text-green-600">{formatCurrency(Number(collection.amount))}</span>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Amount:</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-bold text-green-600">{formatCurrency(Number(collection.amount))}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatDate(collection.date)}
+                    {collection.notes && ` • ${collection.notes}`}
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {formatDate(collection.date)}
-                  {collection.notes && ` • ${collection.notes}`}
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
         )}
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden lg:block rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Payment Method</TableHead>
-              <TableHead>Notes</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={5} rows={5} />
-            ) : filteredCollections.length === 0 ? (
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={5} className="text-center">
-                  {collections.length === 0
-                    ? "No payment collections recorded yet."
-                    : "No collections match your filters."}
-                </TableCell>
+                <TableHead>Date</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>Payment Method</TableHead>
+                <TableHead>Notes</TableHead>
               </TableRow>
-            ) : (
-              filteredCollections.map((collection) => (
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={5} rows={5} />
+              ) : filteredCollections.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center">
+                    {collections.length === 0
+                      ? "No payment collections recorded yet."
+                      : "No collections match your filters."}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                currentItems.map((collection) => (
                 <TableRow key={collection.id}>
                   <TableCell>{formatDate(collection.date)}</TableCell>
                   <TableCell className="font-medium">
@@ -305,6 +331,18 @@ export default function CollectionsPage() {
             )}
           </TableBody>
         </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
 
       <div className="rounded-md border bg-gray-50 p-4">

@@ -75,7 +75,7 @@ export function Navigation() {
       {/* Sidebar Navigation */}
       <div
         className={`
-          fixed lg:static inset-y-0 left-0 z-50
+          fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50
           flex h-screen flex-col border-r bg-white lg:bg-gray-50/40 w-64
           transform transition-transform duration-300 ease-in-out
           ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}

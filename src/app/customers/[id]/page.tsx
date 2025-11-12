@@ -17,6 +17,8 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, User, Phone, MapPin, ShoppingBag, DollarSign, Calendar, Ruler } from "lucide-react";
 import { format } from "date-fns";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 interface Customer {
   id: string;
@@ -108,6 +110,18 @@ export default function CustomerDetailPage() {
         return "text-gray-600 bg-gray-100";
     }
   };
+
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(jobs, { initialItemsPerPage: 10 });
 
   if (loading) {
     return (
@@ -284,8 +298,9 @@ export default function CustomerDetailPage() {
               No orders found for this customer
             </p>
           ) : (
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
+            <div className="space-y-4">
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
@@ -297,7 +312,7 @@ export default function CustomerDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {jobs.map((job) => (
+                  {currentItems.map((job) => (
                     <TableRow key={job.id}>
                       <TableCell>
                         {format(new Date(job.date), "MMM dd, yyyy")}
@@ -327,6 +342,16 @@ export default function CustomerDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                itemsPerPage={itemsPerPage}
+                totalItems={totalItems}
+                itemRange={itemRange}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
             </div>
           )}
         </CardContent>

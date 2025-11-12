@@ -42,6 +42,8 @@ import { Plus, Pencil, Trash2, User, AlertTriangle, ArrowUpDown, ArrowUp, ArrowD
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 type SortField = "name" | "last_order_date" | "total_orders" | "lifetime_value" | "outstanding_balance";
 type SortDirection = "asc" | "desc";
@@ -251,6 +253,18 @@ export default function CustomersPage() {
       return 0;
     });
 
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(filteredCustomers, { initialItemsPerPage: 10 });
+
   // Check if customer is inactive (no order in 60+ days)
   const isInactive = (customer: Customer) => {
     if (!customer.last_order_date) return false;
@@ -457,81 +471,93 @@ export default function CustomersPage() {
         {loading ? (
           <MobileCardSkeleton rows={5} />
         ) : (
-          <MobileCardView
-            data={filteredCustomers}
-            onCardClick={handleCardClick}
-            emptyMessage="No customers found"
-            renderCard={(customer) => {
-              const inactive = isInactive(customer);
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {inactive && <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />}
-                      <span className="font-semibold truncate">{customer.name}</span>
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage="No customers found"
+              renderCard={(customer) => {
+                const inactive = isInactive(customer);
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {inactive && <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />}
+                        <span className="font-semibold truncate">{customer.name}</span>
+                      </div>
+                      <Badge variant={inactive ? "destructive" : "secondary"}>
+                        {customer.total_orders || 0} orders
+                      </Badge>
                     </div>
-                    <Badge variant={inactive ? "destructive" : "secondary"}>
-                      {customer.total_orders || 0} orders
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Lifetime:</span>{" "}
-                      <span className="font-medium">₦{(customer.lifetime_value || 0).toLocaleString()}</span>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Lifetime:</span>{" "}
+                        <span className="font-medium">₦{(customer.lifetime_value || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-muted-foreground">Balance:</span>{" "}
+                        <span className={customer.outstanding_balance && customer.outstanding_balance > 0 ? "font-medium text-orange-600" : "font-medium"}>
+                          ₦{(customer.outstanding_balance || 0).toLocaleString()}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-muted-foreground">Balance:</span>{" "}
-                      <span className={customer.outstanding_balance && customer.outstanding_balance > 0 ? "font-medium text-orange-600" : "font-medium"}>
-                        ₦{(customer.outstanding_balance || 0).toLocaleString()}
-                      </span>
+                    <div className="text-xs text-muted-foreground">
+                      {customer.phone || "No phone"} • Last order: {customer.last_order_date ? formatDate(customer.last_order_date) : "Never"}
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {customer.phone || "No phone"} • Last order: {customer.last_order_date ? formatDate(customer.last_order_date) : "Never"}
-                  </div>
-                </div>
-              );
-            }}
-          />
+                );
+              }}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
         )}
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden lg:block rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("name")}>
-                Customer{getSortIcon("name")}
-              </TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Contact Method</TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("last_order_date")}>
-                Last Order{getSortIcon("last_order_date")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_orders")}>
-                Total Orders{getSortIcon("total_orders")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("lifetime_value")}>
-                Lifetime Value{getSortIcon("lifetime_value")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("outstanding_balance")}>
-                Outstanding{getSortIcon("outstanding_balance")}
-              </TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={8} rows={5} />
-            ) : filteredCustomers.length === 0 ? (
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={8} className="text-center">
-                  No customers found
-                </TableCell>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("name")}>
+                  Customer{getSortIcon("name")}
+                </TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Contact Method</TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("last_order_date")}>
+                  Last Order{getSortIcon("last_order_date")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_orders")}>
+                  Total Orders{getSortIcon("total_orders")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("lifetime_value")}>
+                  Lifetime Value{getSortIcon("lifetime_value")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("outstanding_balance")}>
+                  Outstanding{getSortIcon("outstanding_balance")}
+                </TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              filteredCustomers.map((customer) => {
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={8} rows={5} />
+              ) : filteredCustomers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center">
+                    No customers found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                currentItems.map((customer) => {
                 const inactive = isInactive(customer);
 
                 return (
@@ -607,6 +633,18 @@ export default function CustomersPage() {
             )}
           </TableBody>
         </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
 
       {/* Confirm Delete Dialog */}

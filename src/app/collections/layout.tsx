@@ -6,9 +6,9 @@ export default function CollectionsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex min-h-screen">
       <Navigation />
-      <main className="flex-1 overflow-y-auto bg-gray-50 lg:ml-0">
+      <main className="flex-1 bg-gray-50 lg:ml-0">
         <div className="pt-16 lg:pt-0">
           {children}
         </div>

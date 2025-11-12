@@ -41,6 +41,8 @@ import { Plus, Pencil, Trash2, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, X }
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 type SortField = "item_name" | "category" | "quantity_left" | "unit_cost" | "total_cost" | "date";
 type SortDirection = "asc" | "desc";
@@ -274,6 +276,18 @@ export default function InventoryPage() {
       if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
+
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(filteredItems, { initialItemsPerPage: 10 });
 
   const totalInventoryValue = items.reduce(
     (sum, item) => sum + Number(item.total_cost),
@@ -526,77 +540,89 @@ export default function InventoryPage() {
         {loading ? (
           <MobileCardSkeleton rows={5} />
         ) : (
-          <MobileCardView
-            data={filteredItems}
-            onCardClick={handleCardClick}
-            emptyMessage="No inventory items found"
-            renderCard={(item) => {
-              const isLowStock = item.reorder_level && item.quantity_left <= item.reorder_level;
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {isLowStock && <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0" />}
-                      <span className="font-semibold truncate">{item.item_name}</span>
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage="No inventory items found"
+              renderCard={(item) => {
+                const isLowStock = item.reorder_level && item.quantity_left <= item.reorder_level;
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {isLowStock && <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0" />}
+                        <span className="font-semibold truncate">{item.item_name}</span>
+                      </div>
+                      <Badge variant="secondary">{item.category}</Badge>
                     </div>
-                    <Badge variant="secondary">{item.category}</Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Left:</span>{" "}
-                      <span className="font-medium">{Number(item.quantity_left).toFixed(1)}</span>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Left:</span>{" "}
+                        <span className="font-medium">{Number(item.quantity_left).toFixed(1)}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-semibold">{formatCurrency(Number(item.total_cost))}</span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="font-semibold">{formatCurrency(Number(item.total_cost))}</span>
+                    <div className="text-xs text-muted-foreground">
+                      {item.location || "No location"} • {formatDate(item.date)}
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {item.location || "No location"} • {formatDate(item.date)}
-                  </div>
-                </div>
-              );
-            }}
-          />
+                );
+              }}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
         )}
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden lg:block rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("item_name")}>
-                Item Name{getSortIcon("item_name")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("category")}>
-                Category{getSortIcon("category")}
-              </TableHead>
-              <TableHead className="text-right">Bought</TableHead>
-              <TableHead className="text-right">Used</TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("quantity_left")}>
-                Left{getSortIcon("quantity_left")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("unit_cost")}>
-                Unit Cost{getSortIcon("unit_cost")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_cost")}>
-                Total Cost{getSortIcon("total_cost")}
-              </TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={9} rows={5} />
-            ) : filteredItems.length === 0 ? (
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={9} className="text-center">
-                  No items found
-                </TableCell>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("item_name")}>
+                  Item Name{getSortIcon("item_name")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("category")}>
+                  Category{getSortIcon("category")}
+                </TableHead>
+                <TableHead className="text-right">Bought</TableHead>
+                <TableHead className="text-right">Used</TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("quantity_left")}>
+                  Left{getSortIcon("quantity_left")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("unit_cost")}>
+                  Unit Cost{getSortIcon("unit_cost")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_cost")}>
+                  Total Cost{getSortIcon("total_cost")}
+                </TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              filteredItems.map((item) => {
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={9} rows={5} />
+              ) : filteredItems.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center">
+                    No items found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                currentItems.map((item) => {
                 const isLowStock =
                   item.reorder_level && item.quantity_left <= item.reorder_level;
 
@@ -653,6 +679,18 @@ export default function InventoryPage() {
             )}
           </TableBody>
         </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
 
       {/* Mobile Detail Sheet */}

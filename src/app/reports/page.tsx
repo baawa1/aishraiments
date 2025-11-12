@@ -23,6 +23,8 @@ import { formatCurrency } from "@/lib/utils";
 import { TrendingUp, DollarSign, Package, BarChart3, PieChart as PieChartIcon, TrendingUpIcon } from "lucide-react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 import {
   BarChart,
   Bar,
@@ -207,6 +209,18 @@ export default function ReportsPage() {
       profit: 0,
     }
   );
+
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(monthlyData, { initialItemsPerPage: 10 });
 
   // Chart data preparation
   const chartData = monthlyData.map((data) => ({
@@ -416,8 +430,9 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
+      <div className="space-y-4">
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Month</TableHead>
@@ -433,7 +448,7 @@ export default function ReportsPage() {
             {loading ? (
               <TableSkeleton columns={7} rows={5} />
             ) : (
-              monthlyData.map((data) => (
+              currentItems.map((data) => (
                 <TableRow key={data.month}>
                   <TableCell className="font-medium">
                     {getMonthName(data.month)}
@@ -498,6 +513,18 @@ export default function ReportsPage() {
             </TableRow>
           </TableBody>
         </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
     </div>
   );

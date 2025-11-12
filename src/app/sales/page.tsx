@@ -43,6 +43,8 @@ import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { DateRange } from "react-day-picker";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 type SortField = "date" | "customer_name" | "total_amount" | "amount_paid" | "balance";
 type SortDirection = "asc" | "desc";
@@ -346,6 +348,18 @@ export default function SalesPage() {
       if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
+
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(filteredSales, { initialItemsPerPage: 10 });
 
   const handleCardClick = (sale: SalesSummary) => {
     setSelectedSale(sale);
@@ -664,118 +678,142 @@ export default function SalesPage() {
         {loading ? (
           <MobileCardSkeleton rows={5} />
         ) : (
-          <MobileCardView
-            data={filteredSales}
-            onCardClick={handleCardClick}
-            emptyMessage={sales.length === 0 ? "No sales recorded yet" : "No sales match your search"}
-            renderCard={(sale) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate">{sale.customer_name}</div>
-                    <div className="text-sm text-muted-foreground">{formatDate(sale.date)}</div>
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage={sales.length === 0 ? "No sales recorded yet" : "No sales match your search"}
+              renderCard={(sale) => (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{sale.customer_name}</div>
+                      <div className="text-sm text-muted-foreground">{formatDate(sale.date)}</div>
+                    </div>
+                    <Badge variant="secondary">{sale.sale_type}</Badge>
                   </div>
-                  <Badge variant="secondary">{sale.sale_type}</Badge>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Total:</span>{" "}
+                      <span className="font-medium">{formatCurrency(Number(sale.total_amount))}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-muted-foreground">Balance:</span>{" "}
+                      <span className={`font-semibold ${Number(sale.balance) > 0 ? "text-orange-600" : "text-green-600"}`}>
+                        {formatCurrency(Number(sale.balance))}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Total:</span>{" "}
-                    <span className="font-medium">{formatCurrency(Number(sale.total_amount))}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-muted-foreground">Balance:</span>{" "}
-                    <span className={`font-semibold ${Number(sale.balance) > 0 ? "text-orange-600" : "text-green-600"}`}>
-                      {formatCurrency(Number(sale.balance))}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
         )}
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden lg:block rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("date")}>
-                Date{getSortIcon("date")}
-              </TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("customer_name")}>
-                Customer{getSortIcon("customer_name")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_amount")}>
-                Total Amount{getSortIcon("total_amount")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("amount_paid")}>
-                Amount Paid{getSortIcon("amount_paid")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("balance")}>
-                Balance{getSortIcon("balance")}
-              </TableHead>
-              <TableHead>Notes</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={8} rows={5} />
-            ) : filteredSales.length === 0 ? (
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={8} className="text-center">
-                  {sales.length === 0
-                    ? "No sales recorded yet. Click 'Record Sale' to add one."
-                    : "No sales match your search."}
-                </TableCell>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("date")}>
+                  Date{getSortIcon("date")}
+                </TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("customer_name")}>
+                  Customer{getSortIcon("customer_name")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_amount")}>
+                  Total Amount{getSortIcon("total_amount")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("amount_paid")}>
+                  Amount Paid{getSortIcon("amount_paid")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("balance")}>
+                  Balance{getSortIcon("balance")}
+                </TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              filteredSales.map((sale) => (
-                <TableRow key={sale.id}>
-                  <TableCell>{formatDate(sale.date)}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{sale.sale_type}</Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">{sale.customer_name}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(Number(sale.total_amount))}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(Number(sale.amount_paid))}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className={Number(sale.balance) > 0 ? "text-orange-600 font-medium" : "text-green-600"}>
-                      {formatCurrency(Number(sale.balance))}
-                    </span>
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {sale.notes || "-"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(sale)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteClick(sale.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={8} rows={5} />
+              ) : filteredSales.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center">
+                    {sales.length === 0
+                      ? "No sales recorded yet. Click 'Record Sale' to add one."
+                      : "No sales match your search."}
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                currentItems.map((sale) => (
+                  <TableRow key={sale.id}>
+                    <TableCell>{formatDate(sale.date)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{sale.sale_type}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{sale.customer_name}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(Number(sale.total_amount))}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(Number(sale.amount_paid))}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={Number(sale.balance) > 0 ? "text-orange-600 font-medium" : "text-green-600"}>
+                        {formatCurrency(Number(sale.balance))}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {sale.notes || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(sale)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteClick(sale.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
 
       {/* Mobile Detail Sheet */}

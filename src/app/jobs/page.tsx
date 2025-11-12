@@ -43,6 +43,8 @@ import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 type SortField = "date" | "customer_name" | "total_charged" | "amount_paid" | "balance" | "profit" | "status";
 type SortDirection = "asc" | "desc";
@@ -485,6 +487,18 @@ export default function JobsPage() {
   const totalProfit = filteredJobs.reduce((sum, job) => sum + Number(job.profit), 0);
   const totalRemaining = totalRevenue - totalCollected;
 
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(filteredJobs, { initialItemsPerPage: 10 });
+
   const handleCardClick = (job: SewingJob) => {
     setSelectedJob(job);
     setDetailSheetOpen(true);
@@ -880,100 +894,112 @@ export default function JobsPage() {
         {loading ? (
           <MobileCardSkeleton rows={5} />
         ) : (
-          <MobileCardView
-            data={filteredJobs}
-            onCardClick={handleCardClick}
-            emptyMessage="No sewing jobs found"
-            renderCard={(job) => {
-              const overdue = isOverdue(job);
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate">{job.customer_name}</div>
-                      <div className="text-sm text-muted-foreground truncate">{job.item_sewn}</div>
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage="No sewing jobs found"
+              renderCard={(job) => {
+                const overdue = isOverdue(job);
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold truncate">{job.customer_name}</div>
+                        <div className="text-sm text-muted-foreground truncate">{job.item_sewn}</div>
+                      </div>
+                      <Badge
+                        variant={job.status === "Done" ? "default" : job.status === "Part" ? "secondary" : "outline"}
+                        className={
+                          job.status === "Done"
+                            ? "bg-green-100 text-green-700"
+                            : job.status === "Part"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : ""
+                        }
+                      >
+                        {job.status}
+                      </Badge>
                     </div>
-                    <Badge
-                      variant={job.status === "Done" ? "default" : job.status === "Part" ? "secondary" : "outline"}
-                      className={
-                        job.status === "Done"
-                          ? "bg-green-100 text-green-700"
-                          : job.status === "Part"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : ""
-                      }
-                    >
-                      {job.status}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Total:</span>{" "}
-                      <span className="font-medium">{formatCurrency(Number(job.total_charged))}</span>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Total:</span>{" "}
+                        <span className="font-medium">{formatCurrency(Number(job.total_charged))}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-muted-foreground">Balance:</span>{" "}
+                        <span className="font-semibold text-orange-600">{formatCurrency(Number(job.balance))}</span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-muted-foreground">Balance:</span>{" "}
-                      <span className="font-semibold text-orange-600">{formatCurrency(Number(job.balance))}</span>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{formatDate(job.date)}</span>
+                      {job.delivery_date_expected && (
+                        <span className={overdue ? "text-red-600 font-medium flex items-center gap-1" : "text-muted-foreground"}>
+                          {overdue && <AlertCircle className="h-3 w-3" />}
+                          Due: {formatDate(job.delivery_date_expected)}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{formatDate(job.date)}</span>
-                    {job.delivery_date_expected && (
-                      <span className={overdue ? "text-red-600 font-medium flex items-center gap-1" : "text-muted-foreground"}>
-                        {overdue && <AlertCircle className="h-3 w-3" />}
-                        Due: {formatDate(job.delivery_date_expected)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            }}
-          />
+                );
+              }}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
         )}
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden lg:block rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("date")}>
-                Date{getSortIcon("date")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("customer_name")}>
-                Customer{getSortIcon("customer_name")}
-              </TableHead>
-              <TableHead>Item</TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_charged")}>
-                Total{getSortIcon("total_charged")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("amount_paid")}>
-                Paid{getSortIcon("amount_paid")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("balance")}>
-                Balance{getSortIcon("balance")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("profit")}>
-                Profit{getSortIcon("profit")}
-              </TableHead>
-              <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("status")}>
-                Status{getSortIcon("status")}
-              </TableHead>
-              <TableHead>Delivery</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={10} rows={5} />
-            ) : filteredJobs.length === 0 ? (
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={10} className="text-center">
-                  No jobs found
-                </TableCell>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("date")}>
+                  Date{getSortIcon("date")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("customer_name")}>
+                  Customer{getSortIcon("customer_name")}
+                </TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("total_charged")}>
+                  Total{getSortIcon("total_charged")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("amount_paid")}>
+                  Paid{getSortIcon("amount_paid")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("balance")}>
+                  Balance{getSortIcon("balance")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50 text-right" onClick={() => handleSort("profit")}>
+                  Profit{getSortIcon("profit")}
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort("status")}>
+                  Status{getSortIcon("status")}
+                </TableHead>
+                <TableHead>Delivery</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              filteredJobs.map((job) => {
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={10} rows={5} />
+              ) : filteredJobs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center">
+                    No jobs found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                currentItems.map((job) => {
                 const overdue = isOverdue(job);
 
                 return (
@@ -1064,6 +1090,18 @@ export default function JobsPage() {
             )}
           </TableBody>
         </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
 
       {/* Mobile Detail Sheet */}

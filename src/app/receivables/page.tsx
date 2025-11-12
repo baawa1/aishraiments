@@ -40,6 +40,8 @@ import { PaymentMethod } from "@/types/database";
 import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 interface Receivable {
   customer_id: string | null;
@@ -277,6 +279,18 @@ export default function ReceivablesPage() {
     (receivable.phone && receivable.phone.includes(searchTerm))
   );
 
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(filteredReceivables, { initialItemsPerPage: 10 });
+
   const totalOutstanding = receivables.reduce((sum, r) => sum + r.total_outstanding, 0);
   const overdueCount = receivables.filter((r) => r.days_since_sale > 30).length;
 
@@ -348,65 +362,77 @@ export default function ReceivablesPage() {
         {loading ? (
           <MobileCardSkeleton rows={5} />
         ) : (
-          <MobileCardView
-            data={filteredReceivables}
-            onCardClick={handleCardClick}
-            emptyMessage="No outstanding balances! 🎉"
-            renderCard={(receivable) => {
-              const isOverdue = receivable.days_since_sale > 30;
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {isOverdue && <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />}
-                      <span className="font-semibold truncate">{receivable.customer_name}</span>
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage="No outstanding balances! 🎉"
+              renderCard={(receivable) => {
+                const isOverdue = receivable.days_since_sale > 30;
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {isOverdue && <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />}
+                        <span className="font-semibold truncate">{receivable.customer_name}</span>
+                      </div>
+                      <Badge variant={isOverdue ? "destructive" : "secondary"}>
+                        {receivable.days_since_sale} days
+                      </Badge>
                     </div>
-                    <Badge variant={isOverdue ? "destructive" : "secondary"}>
-                      {receivable.days_since_sale} days
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Outstanding:</span>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Outstanding:</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-orange-600">{formatCurrency(receivable.total_outstanding)}</span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="font-bold text-orange-600">{formatCurrency(receivable.total_outstanding)}</span>
+                    <div className="text-xs text-muted-foreground">
+                      {receivable.phone || "No phone"} • Last sale: {formatDate(receivable.last_sale_date)}
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {receivable.phone || "No phone"} • Last sale: {formatDate(receivable.last_sale_date)}
-                  </div>
-                </div>
-              );
-            }}
-          />
+                );
+              }}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
         )}
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden lg:block rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead className="text-right">Outstanding</TableHead>
-              <TableHead>Last Sale</TableHead>
-              <TableHead>Days Overdue</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={6} rows={5} />
-            ) : filteredReceivables.length === 0 ? (
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
-                  No outstanding balances! 🎉
-                </TableCell>
+                <TableHead>Customer</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead className="text-right">Outstanding</TableHead>
+                <TableHead>Last Sale</TableHead>
+                <TableHead>Days Overdue</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              filteredReceivables.map((receivable, index) => {
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={6} rows={5} />
+              ) : filteredReceivables.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center">
+                    No outstanding balances! 🎉
+                  </TableCell>
+                </TableRow>
+              ) : (
+                currentItems.map((receivable, index) => {
                 const isOverdue = receivable.days_since_sale > 30;
 
                 return (
@@ -459,6 +485,18 @@ export default function ReceivablesPage() {
             )}
           </TableBody>
         </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
 
       <Dialog open={collectDialogOpen} onOpenChange={setCollectDialogOpen}>

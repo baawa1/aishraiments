@@ -43,6 +43,8 @@ import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
 import { MobileCardSkeleton } from "@/components/mobile-card-skeleton";
 import { DateRange } from "react-day-picker";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/table-pagination";
 
 const expenseTypes: ExpenseType[] = [
   "Embroidery",
@@ -247,6 +249,18 @@ export default function ExpensesPage() {
   const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
   const fixedExpenses = expenses.filter(e => e.is_fixed).reduce((sum, e) => sum + Number(e.amount), 0);
   const variableExpenses = expenses.filter(e => !e.is_fixed).reduce((sum, e) => sum + Number(e.amount), 0);
+
+  // Pagination
+  const {
+    currentItems,
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    totalItems,
+    itemRange,
+  } = usePagination(filteredExpenses, { initialItemsPerPage: 10 });
 
   const handleCardClick = (expense: Expense) => {
     setSelectedExpense(expense);
@@ -514,61 +528,73 @@ export default function ExpensesPage() {
         {loading ? (
           <MobileCardSkeleton rows={5} />
         ) : (
-          <MobileCardView
-            data={filteredExpenses}
-            onCardClick={handleCardClick}
-            emptyMessage="No expenses found"
-            renderCard={(expense) => (
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate">{expense.description || expense.expense_type}</div>
-                    {expense.vendor_payee && (
-                      <div className="text-sm text-muted-foreground truncate">{expense.vendor_payee}</div>
-                    )}
+          <div className="space-y-4">
+            <MobileCardView
+              data={currentItems}
+              onCardClick={handleCardClick}
+              emptyMessage="No expenses found"
+              renderCard={(expense) => (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{expense.description || expense.expense_type}</div>
+                      {expense.vendor_payee && (
+                        <div className="text-sm text-muted-foreground truncate">{expense.vendor_payee}</div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold">{formatCurrency(Number(expense.amount))}</div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold">{formatCurrency(Number(expense.amount))}</div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">{expense.expense_type}</Badge>
+                      {expense.is_fixed && <RefreshCcw className="h-3 w-3 text-blue-500" />}
+                    </div>
+                    <span className="text-xs text-muted-foreground">{formatDate(expense.date)}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{expense.expense_type}</Badge>
-                    {expense.is_fixed && <RefreshCcw className="h-3 w-3 text-blue-500" />}
-                  </div>
-                  <span className="text-xs text-muted-foreground">{formatDate(expense.date)}</span>
-                </div>
-              </div>
-            )}
-          />
+              )}
+            />
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={totalItems}
+              itemRange={itemRange}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          </div>
         )}
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden lg:block rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Payment</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableSkeleton columns={7} rows={5} />
-            ) : filteredExpenses.length === 0 ? (
+      <div className="hidden lg:block space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={7} className="text-center">
-                  No expenses found
-                </TableCell>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Vendor</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>Payment</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              filteredExpenses.map((expense) => (
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableSkeleton columns={7} rows={5} />
+              ) : filteredExpenses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center">
+                    No expenses found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                currentItems.map((expense) => (
                 <TableRow key={expense.id}>
                   <TableCell>{formatDate(expense.date)}</TableCell>
                   <TableCell>
@@ -616,6 +642,18 @@ export default function ExpensesPage() {
             )}
           </TableBody>
         </Table>
+        </div>
+        {!loading && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalItems={totalItems}
+            itemRange={itemRange}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        )}
       </div>
 
       {/* Mobile Detail Sheet */}
