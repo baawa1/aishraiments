@@ -76,7 +76,7 @@ export function Navigation() {
       <div
         className={`
           fixed lg:static inset-y-0 left-0 z-50
-          flex h-screen flex-col border-r bg-gray-50/40 w-64
+          flex h-screen flex-col border-r bg-white lg:bg-gray-50/40 w-64
           transform transition-transform duration-300 ease-in-out
           ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
@@ -89,6 +89,7 @@ export function Navigation() {
             width={50}
             height={50}
             className="rounded-full"
+            style={{ width: "auto", height: "auto" }}
           />
           <div className="flex flex-col">
             <span className="text-lg font-bold" style={{ color: settings.brand_primary_color }}>

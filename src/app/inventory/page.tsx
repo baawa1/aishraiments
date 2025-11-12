@@ -5,8 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { InventoryItem, FabricCategory } from "@/types/database";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
+import { MobileCardView } from "@/components/ui/mobile-card-view";
+import { DetailSheet } from "@/components/ui/detail-sheet";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -31,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, X } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { TableSkeleton } from "@/components/table-skeleton";
 
@@ -50,17 +56,34 @@ const categories: FabricCategory[] = [
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [sortField, setSortField] = useState<SortField>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split("T")[0],
+  const [formData, setFormData] = useState<{
+    date: Date | undefined;
+    item_name: string;
+    category: FabricCategory;
+    quantity_bought: string;
+    quantity_used: string;
+    unit_cost: string;
+    supplier_notes: string;
+    reorder_level: string;
+    location: string;
+    preferred_supplier: string;
+  }>({
+    date: new Date(),
     item_name: "",
-    category: "Fabric" as FabricCategory,
+    category: "Fabric",
     quantity_bought: "",
     quantity_used: "",
     unit_cost: "",
@@ -93,7 +116,7 @@ export default function InventoryPage() {
 
   const resetForm = () => {
     setFormData({
-      date: new Date().toISOString().split("T")[0],
+      date: new Date(),
       item_name: "",
       category: "Fabric",
       quantity_bought: "",
@@ -109,9 +132,10 @@ export default function InventoryPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
 
     const data = {
-      date: formData.date,
+      date: formData.date?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0],
       item_name: formData.item_name,
       category: formData.category,
       quantity_bought: parseFloat(formData.quantity_bought) || 0,
@@ -151,12 +175,13 @@ export default function InventoryPage() {
         toast.success("Item added successfully");
       }
     }
+    setSubmitting(false);
   };
 
   const handleEdit = (item: InventoryItem) => {
     setEditingItem(item);
     setFormData({
-      date: item.date,
+      date: new Date(item.date),
       item_name: item.item_name,
       category: item.category,
       quantity_bought: item.quantity_bought.toString(),
@@ -170,10 +195,16 @@ export default function InventoryPage() {
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
+  const handleDeleteClick = (id: string) => {
+    setDeletingId(id);
+    setDeleteDialogOpen(true);
+  };
 
-    const { error } = await supabase.from("inventory").delete().eq("id", id);
+  const handleDeleteConfirm = async () => {
+    if (!deletingId) return;
+
+    setDeleting(true);
+    const { error } = await supabase.from("inventory").delete().eq("id", deletingId);
 
     if (error) {
       console.error("Error deleting item:", error);
@@ -182,6 +213,9 @@ export default function InventoryPage() {
       await fetchItems();
       toast.success("Item deleted successfully");
     }
+    setDeleting(false);
+    setDeleteDialogOpen(false);
+    setDeletingId(null);
   };
 
   const handleSort = (field: SortField) => {
@@ -203,6 +237,13 @@ export default function InventoryPage() {
       <ArrowDown className="ml-2 h-4 w-4 inline" />
     );
   };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setSelectedCategory("all");
+  };
+
+  const hasActiveFilters = searchTerm !== "" || selectedCategory !== "all";
 
   const filteredItems = items
     .filter((item) => {
@@ -238,12 +279,18 @@ export default function InventoryPage() {
     0
   );
 
+  const handleCardClick = (item: InventoryItem) => {
+    setSelectedItem(item);
+    setDetailSheetOpen(true);
+  };
+
   return (
-    <div className="flex-1 space-y-6 p-8">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 space-y-4 p-4 md:p-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Inventory</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Inventory</h2>
+          <p className="text-sm text-muted-foreground">
             Manage your fabrics and materials
           </p>
         </div>
@@ -255,12 +302,13 @@ export default function InventoryPage() {
                 setDialogOpen(true);
               }}
               style={{ backgroundColor: "#72D0CF" }}
+              className="w-full sm:w-auto"
             >
               <Plus className="mr-2 h-4 w-4" />
               Add Item
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:p-6 p-4">
             <DialogHeader>
               <DialogTitle>
                 {editingItem ? "Edit Inventory Item" : "Add New Inventory Item"}
@@ -272,17 +320,12 @@ export default function InventoryPage() {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="date">Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, date: e.target.value })
-                    }
-                    required
+                  <DatePicker
+                    date={formData.date}
+                    onDateChange={(date) => setFormData({ ...formData, date })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -320,7 +363,7 @@ export default function InventoryPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="quantity_bought">Quantity Bought</Label>
                   <Input
@@ -362,7 +405,7 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="reorder_level">Reorder Level</Label>
                   <Input
@@ -413,7 +456,7 @@ export default function InventoryPage() {
                 />
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="gap-2 sm:gap-0">
                 <Button
                   type="button"
                   variant="outline"
@@ -421,29 +464,37 @@ export default function InventoryPage() {
                     setDialogOpen(false);
                     resetForm();
                   }}
+                  disabled={submitting}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" style={{ backgroundColor: "#72D0CF" }}>
+                <LoadingButton
+                  type="submit"
+                  style={{ backgroundColor: "#72D0CF" }}
+                  loading={submitting}
+                  className="w-full sm:w-auto"
+                >
                   {editingItem ? "Update Item" : "Add Item"}
-                </Button>
+                </LoadingButton>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-4">
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1">
           <Input
             placeholder="Search items..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="w-full"
           />
         </div>
         <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="All Categories" />
           </SelectTrigger>
           <SelectContent>
@@ -455,7 +506,13 @@ export default function InventoryPage() {
             ))}
           </SelectContent>
         </Select>
-        <div className="text-sm">
+        {hasActiveFilters && (
+          <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
+            <X className="mr-2 h-4 w-4" />
+            Clear Filters
+          </Button>
+        )}
+        <div className="text-sm text-center sm:text-left">
           <span className="font-medium">Total Value:</span>{" "}
           <span style={{ color: "#72D0CF" }} className="font-bold">
             {formatCurrency(totalInventoryValue)}
@@ -463,7 +520,47 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      <div className="rounded-md border">
+      {/* Mobile Card View */}
+      <div className="lg:hidden">
+        {loading ? (
+          <TableSkeleton columns={1} rows={5} />
+        ) : (
+          <MobileCardView
+            data={filteredItems}
+            onCardClick={handleCardClick}
+            emptyMessage="No inventory items found"
+            renderCard={(item) => {
+              const isLowStock = item.reorder_level && item.quantity_left <= item.reorder_level;
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {isLowStock && <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0" />}
+                      <span className="font-semibold truncate">{item.item_name}</span>
+                    </div>
+                    <Badge variant="secondary">{item.category}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Left:</span>{" "}
+                      <span className="font-medium">{Number(item.quantity_left).toFixed(1)}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-semibold">{formatCurrency(Number(item.total_cost))}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {item.location || "No location"} • {formatDate(item.date)}
+                  </div>
+                </div>
+              );
+            }}
+          />
+        )}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden lg:block rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -513,9 +610,7 @@ export default function InventoryPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-gray-100">
-                        {item.category}
-                      </span>
+                      <Badge variant="secondary">{item.category}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       {Number(item.quantity_bought).toFixed(1)}
@@ -545,7 +640,7 @@ export default function InventoryPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDelete(item.id)}
+                          onClick={() => handleDeleteClick(item.id)}
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
@@ -558,6 +653,134 @@ export default function InventoryPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Mobile Detail Sheet */}
+      <DetailSheet
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        title="Inventory Item Details"
+      >
+        {selectedItem && (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Item Name</div>
+                <div className="text-lg font-semibold flex items-center gap-2">
+                  {selectedItem.reorder_level && selectedItem.quantity_left <= selectedItem.reorder_level && (
+                    <AlertCircle className="h-5 w-5 text-orange-500" />
+                  )}
+                  {selectedItem.item_name}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Category</div>
+                  <Badge variant="secondary" className="mt-1">{selectedItem.category}</Badge>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Date</div>
+                  <div className="font-medium">{formatDate(selectedItem.date)}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Bought</div>
+                  <div className="font-medium">{Number(selectedItem.quantity_bought).toFixed(1)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Used</div>
+                  <div className="font-medium">{Number(selectedItem.quantity_used).toFixed(1)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Left</div>
+                  <div className="font-semibold text-lg">{Number(selectedItem.quantity_left).toFixed(1)}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Unit Cost</div>
+                  <div className="font-medium">{formatCurrency(Number(selectedItem.unit_cost))}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Total Cost</div>
+                  <div className="font-semibold text-lg">{formatCurrency(Number(selectedItem.total_cost))}</div>
+                </div>
+              </div>
+
+              {(selectedItem.location || selectedItem.preferred_supplier) && (
+                <div className="grid grid-cols-2 gap-4">
+                  {selectedItem.location && (
+                    <div>
+                      <div className="text-sm text-muted-foreground">Location</div>
+                      <div className="font-medium">{selectedItem.location}</div>
+                    </div>
+                  )}
+                  {selectedItem.preferred_supplier && (
+                    <div>
+                      <div className="text-sm text-muted-foreground">Supplier</div>
+                      <div className="font-medium">{selectedItem.preferred_supplier}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedItem.reorder_level && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Reorder Level</div>
+                  <div className="font-medium">{selectedItem.reorder_level}</div>
+                </div>
+              )}
+
+              {selectedItem.supplier_notes && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Notes</div>
+                  <div className="text-sm">{selectedItem.supplier_notes}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setDetailSheetOpen(false);
+                  handleEdit(selectedItem);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => {
+                  setDetailSheetOpen(false);
+                  handleDeleteClick(selectedItem.id);
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </DetailSheet>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Item"
+        description="Are you sure you want to delete this inventory item? This action cannot be undone."
+        confirmText="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   );
 }

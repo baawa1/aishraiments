@@ -4,8 +4,15 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Expense, ExpenseType, PaymentMethod } from "@/types/database";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { MobileCardView } from "@/components/ui/mobile-card-view";
+import { DetailSheet } from "@/components/ui/detail-sheet";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -30,10 +37,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, RefreshCcw } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCcw, X } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { TableSkeleton } from "@/components/table-skeleton";
+import { DateRange } from "react-day-picker";
 
 const expenseTypes: ExpenseType[] = [
   "Embroidery",
@@ -49,21 +57,35 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [jobs, setJobs] = useState<Array<{ id: string; customer_name: string; item_sewn: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [showFixedOnly, setShowFixedOnly] = useState(false);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split("T")[0],
-    expense_type: "Supplies" as ExpenseType,
+  const [formData, setFormData] = useState<{
+    date: Date | undefined;
+    expense_type: ExpenseType;
+    description: string;
+    amount: string;
+    vendor_payee: string;
+    payment_method: PaymentMethod | "";
+    is_fixed: boolean;
+    job_link: string;
+  }>({
+    date: new Date(),
+    expense_type: "Supplies",
     description: "",
     amount: "",
     vendor_payee: "",
-    payment_method: "Cash" as PaymentMethod | "",
+    payment_method: "Cash",
     is_fixed: false,
     job_link: "",
   });
@@ -79,11 +101,11 @@ export default function ExpensesPage() {
       .order("date", { ascending: false });
 
     // Apply date range filters if provided
-    if (startDate) {
-      query = query.gte("date", startDate);
+    if (dateRange?.from) {
+      query = query.gte("date", dateRange.from.toISOString().split("T")[0]);
     }
-    if (endDate) {
-      query = query.lte("date", endDate);
+    if (dateRange?.to) {
+      query = query.lte("date", dateRange.to.toISOString().split("T")[0]);
     }
 
     const { data, error } = await query;
@@ -94,7 +116,7 @@ export default function ExpensesPage() {
       setExpenses(data || []);
     }
     setLoading(false);
-  }, [supabase, startDate, endDate]);
+  }, [supabase, dateRange]);
 
   const fetchJobs = useCallback(async () => {
     const { data } = await supabase
@@ -112,7 +134,7 @@ export default function ExpensesPage() {
 
   const resetForm = () => {
     setFormData({
-      date: new Date().toISOString().split("T")[0],
+      date: new Date(),
       expense_type: "Supplies",
       description: "",
       amount: "",
@@ -126,9 +148,10 @@ export default function ExpensesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
 
     const data = {
-      date: formData.date,
+      date: formData.date?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0],
       expense_type: formData.expense_type,
       description: formData.description || null,
       amount: parseFloat(formData.amount),
@@ -138,40 +161,36 @@ export default function ExpensesPage() {
       job_link: formData.job_link || null,
     };
 
-    if (editingExpense) {
-      const { error } = await supabase
-        .from("expenses")
-        .update(data)
-        .eq("id", editingExpense.id);
+    try {
+      if (editingExpense) {
+        const { error } = await supabase
+          .from("expenses")
+          .update(data)
+          .eq("id", editingExpense.id);
 
-      if (error) {
-        console.error("Error updating expense:", error);
-        toast.error("Error updating expense");
-      } else {
-        await fetchExpenses();
-        setDialogOpen(false);
-        resetForm();
+        if (error) throw error;
         toast.success("Expense updated successfully");
-      }
-    } else {
-      const { error } = await supabase.from("expenses").insert([data]);
-
-      if (error) {
-        console.error("Error adding expense:", error);
-        toast.error("Error adding expense");
       } else {
-        await fetchExpenses();
-        setDialogOpen(false);
-        resetForm();
+        const { error } = await supabase.from("expenses").insert([data]);
+        if (error) throw error;
         toast.success("Expense added successfully");
       }
+
+      await fetchExpenses();
+      setDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error("Error saving expense:", error);
+      toast.error(editingExpense ? "Error updating expense" : "Error adding expense");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleEdit = (expense: Expense) => {
     setEditingExpense(expense);
     setFormData({
-      date: expense.date,
+      date: new Date(expense.date),
       expense_type: expense.expense_type,
       description: expense.description || "",
       amount: expense.amount.toString(),
@@ -183,10 +202,16 @@ export default function ExpensesPage() {
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this expense?")) return;
+  const handleDeleteClick = (id: string) => {
+    setDeletingId(id);
+    setDeleteDialogOpen(true);
+  };
 
-    const { error } = await supabase.from("expenses").delete().eq("id", id);
+  const handleDeleteConfirm = async () => {
+    if (!deletingId) return;
+
+    setDeleting(true);
+    const { error } = await supabase.from("expenses").delete().eq("id", deletingId);
 
     if (error) {
       console.error("Error deleting expense:", error);
@@ -195,7 +220,19 @@ export default function ExpensesPage() {
       await fetchExpenses();
       toast.success("Expense deleted successfully");
     }
+    setDeleting(false);
+    setDeleteDialogOpen(false);
+    setDeletingId(null);
   };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setTypeFilter("all");
+    setShowFixedOnly(false);
+    setDateRange(undefined);
+  };
+
+  const hasActiveFilters = searchTerm !== "" || typeFilter !== "all" || showFixedOnly || dateRange !== undefined;
 
   const filteredExpenses = expenses.filter((expense) => {
     const matchesSearch =
@@ -210,12 +247,18 @@ export default function ExpensesPage() {
   const fixedExpenses = expenses.filter(e => e.is_fixed).reduce((sum, e) => sum + Number(e.amount), 0);
   const variableExpenses = expenses.filter(e => !e.is_fixed).reduce((sum, e) => sum + Number(e.amount), 0);
 
+  const handleCardClick = (expense: Expense) => {
+    setSelectedExpense(expense);
+    setDetailSheetOpen(true);
+  };
+
   return (
-    <div className="flex-1 space-y-6 p-8">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 space-y-4 p-4 md:p-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Expenses</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Expenses</h2>
+          <p className="text-sm text-muted-foreground">
             Track all business expenses and costs
           </p>
         </div>
@@ -227,12 +270,13 @@ export default function ExpensesPage() {
                 setDialogOpen(true);
               }}
               style={{ backgroundColor: "#EC88C7" }}
+              className="w-full sm:w-auto"
             >
               <Plus className="mr-2 h-4 w-4" />
               Add Expense
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:p-6 p-4">
             <DialogHeader>
               <DialogTitle>
                 {editingExpense ? "Edit Expense" : "Record New Expense"}
@@ -244,17 +288,12 @@ export default function ExpensesPage() {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="date">Date *</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, date: e.target.value })
-                    }
-                    required
+                  <Label htmlFor="date">Date</Label>
+                  <DatePicker
+                    date={formData.date}
+                    onDateChange={(date) => setFormData({ ...formData, date })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -291,7 +330,7 @@ export default function ExpensesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount (₦) *</Label>
                   <Input
@@ -376,7 +415,7 @@ export default function ExpensesPage() {
                 </Label>
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="gap-2 sm:gap-0">
                 <Button
                   type="button"
                   variant="outline"
@@ -384,85 +423,83 @@ export default function ExpensesPage() {
                     setDialogOpen(false);
                     resetForm();
                   }}
+                  disabled={submitting}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" style={{ backgroundColor: "#EC88C7" }}>
+                <LoadingButton
+                  type="submit"
+                  style={{ backgroundColor: "#EC88C7" }}
+                  loading={submitting}
+                  className="w-full sm:w-auto"
+                >
                   {editingExpense ? "Update Expense" : "Add Expense"}
-                </Button>
+                </LoadingButton>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-4 flex-wrap">
-        <Input
-          placeholder="Search by description or vendor..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
-        <div className="flex items-center gap-2">
-          <Label htmlFor="startDate" className="text-sm whitespace-nowrap">
-            From:
-          </Label>
+      {/* Filters */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <Input
-            id="startDate"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-[150px]"
+            placeholder="Search by description or vendor..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1"
+          />
+          <DateRangePicker
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            className="w-full sm:w-auto"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="endDate" className="text-sm whitespace-nowrap">
-            To:
-          </Label>
-          <Input
-            id="endDate"
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-[150px]"
-          />
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {expenseTypes.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant={showFixedOnly ? "default" : "outline"}
+            onClick={() => setShowFixedOnly(!showFixedOnly)}
+            className="w-full sm:w-auto gap-2"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            Fixed Only
+          </Button>
+          {hasActiveFilters && (
+            <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
+              <X className="mr-2 h-4 w-4" />
+              Clear Filters
+            </Button>
+          )}
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="All Types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {expenseTypes.map((type) => (
-              <SelectItem key={type} value={type}>
-                {type}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant={showFixedOnly ? "default" : "outline"}
-          onClick={() => setShowFixedOnly(!showFixedOnly)}
-          size="sm"
-          className="gap-2"
-        >
-          <RefreshCcw className="h-4 w-4" />
-          Fixed Only
-        </Button>
-        <div className="ml-auto flex gap-4 text-sm">
-          <div>
+        <div className="grid grid-cols-3 gap-3 text-sm">
+          <div className="text-center sm:text-left">
             <span className="text-muted-foreground">Total: </span>
             <span className="font-bold" style={{ color: "#EC88C7" }}>
               {formatCurrency(totalExpenses)}
             </span>
           </div>
-          <div>
+          <div className="text-center sm:text-left">
             <span className="text-muted-foreground">Fixed: </span>
             <span className="font-bold">
               {formatCurrency(fixedExpenses)}
             </span>
           </div>
-          <div>
+          <div className="text-center sm:text-left">
             <span className="text-muted-foreground">Variable: </span>
             <span className="font-bold">
               {formatCurrency(variableExpenses)}
@@ -471,7 +508,43 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      <div className="rounded-md border">
+      {/* Mobile Card View */}
+      <div className="lg:hidden">
+        {loading ? (
+          <TableSkeleton columns={1} rows={5} />
+        ) : (
+          <MobileCardView
+            data={filteredExpenses}
+            onCardClick={handleCardClick}
+            emptyMessage="No expenses found"
+            renderCard={(expense) => (
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate">{expense.description || expense.expense_type}</div>
+                    {expense.vendor_payee && (
+                      <div className="text-sm text-muted-foreground truncate">{expense.vendor_payee}</div>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold">{formatCurrency(Number(expense.amount))}</div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{expense.expense_type}</Badge>
+                    {expense.is_fixed && <RefreshCcw className="h-3 w-3 text-blue-500" />}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{formatDate(expense.date)}</span>
+                </div>
+              </div>
+            )}
+          />
+        )}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden lg:block rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -499,9 +572,7 @@ export default function ExpensesPage() {
                   <TableCell>{formatDate(expense.date)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-gray-100">
-                        {expense.expense_type}
-                      </span>
+                      <Badge variant="secondary">{expense.expense_type}</Badge>
                       {expense.is_fixed && (
                         <span title="Fixed expense">
                           <RefreshCcw className="h-3 w-3 text-blue-500" />
@@ -516,9 +587,7 @@ export default function ExpensesPage() {
                   </TableCell>
                   <TableCell>
                     {expense.payment_method ? (
-                      <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-blue-50 text-blue-700">
-                        {expense.payment_method}
-                      </span>
+                      <Badge variant="outline">{expense.payment_method}</Badge>
                     ) : (
                       "-"
                     )}
@@ -535,10 +604,10 @@ export default function ExpensesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDelete(expense.id)}
+                        onClick={() => handleDeleteClick(expense.id)}
                       >
                         <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -547,6 +616,103 @@ export default function ExpensesPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Mobile Detail Sheet */}
+      <DetailSheet
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        title="Expense Details"
+      >
+        {selectedExpense && (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-muted-foreground">Type</div>
+                  <Badge variant="secondary" className="mt-1">{selectedExpense.expense_type}</Badge>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Amount</div>
+                  <div className="text-2xl font-bold" style={{ color: "#EC88C7" }}>
+                    {formatCurrency(Number(selectedExpense.amount))}
+                  </div>
+                </div>
+              </div>
+
+              {selectedExpense.description && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Description</div>
+                  <div className="font-medium">{selectedExpense.description}</div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Date</div>
+                  <div className="font-medium">{formatDate(selectedExpense.date)}</div>
+                </div>
+                {selectedExpense.payment_method && (
+                  <div>
+                    <div className="text-sm text-muted-foreground">Payment Method</div>
+                    <Badge variant="outline" className="mt-1">{selectedExpense.payment_method}</Badge>
+                  </div>
+                )}
+              </div>
+
+              {selectedExpense.vendor_payee && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Vendor / Payee</div>
+                  <div className="font-medium">{selectedExpense.vendor_payee}</div>
+                </div>
+              )}
+
+              {selectedExpense.is_fixed && (
+                <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-md">
+                  <RefreshCcw className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">Fixed/Recurring Expense</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setDetailSheetOpen(false);
+                  handleEdit(selectedExpense);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => {
+                  setDetailSheetOpen(false);
+                  handleDeleteClick(selectedExpense.id);
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </DetailSheet>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Expense"
+        description="Are you sure you want to delete this expense? This action cannot be undone."
+        confirmText="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   );
 }

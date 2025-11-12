@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +55,7 @@ export default function LoginPage() {
               width={120}
               height={120}
               className="mb-4"
+              style={{ width: "auto", height: "auto" }}
               priority
             />
             <h1 className="text-4xl font-bold" style={{ color: "#72D0CF" }}>
@@ -100,13 +101,13 @@ export default function LoginPage() {
                 {error}
               </div>
             )}
-            <Button
+            <LoadingButton
               type="submit"
               className="w-full bg-brand-primary hover:bg-brand-primary/90"
-              disabled={loading}
+              loading={loading}
             >
-              {loading ? "Signing in..." : "Sign In"}
-            </Button>
+              Sign In
+            </LoadingButton>
           </form>
         </CardContent>
       </Card>
